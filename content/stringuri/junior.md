@@ -1,0 +1,182 @@
+# Stringuri, bytes și runes — Junior
+
+Un `string` în Go e o secvență **imutabilă de octeți**, de obicei text codificat UTF-8. Diferența dintre octeți și caractere e esențială pentru orice text care nu e doar ASCII, inclusiv pentru diacriticele românești.
+
+## Literale
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	s := "Salut,\n\"lume\"!" // interpretat: \n și \" sunt secvențe escape
+	r := `C:\cale\fără\escape
+pe mai multe linii` // raw: exact cum e scris
+	fmt.Println(s)
+	fmt.Println(r)
+}
+```
+
+Literalele raw (cu backtick) sunt utile pentru expresii regulate, JSON și text pe mai multe linii.
+
+## Lungimea e în octeți
+
+`len(s)` numără **octeți**, nu caractere. Literele cu diacritice ocupă 2 octeți în UTF-8:
+
+```go
+package main
+
+import (
+	"fmt"
+	"unicode/utf8"
+)
+
+func main() {
+	s := "școală"
+	fmt.Println(len(s))                    // 8 octeți
+	fmt.Println(utf8.RuneCountInString(s)) // 6 caractere
+}
+```
+
+## Index vs. `range`
+
+`s[i]` întoarce un **octet** (`byte`). `range` parcurge **caractere** (`rune`):
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	s := "țară"
+	fmt.Println(s[0]) // 200: primul octet din „ț”, nu litera
+
+	for i, r := range s {
+		fmt.Printf("%d: %c\n", i, r) // indexul sare: 0, 2, 3, 4
+	}
+}
+```
+
+Un `rune` e un `int32` care conține un cod Unicode. Literalul de rune se scrie cu apostrof: `'ț'`.
+
+## Stringurile sunt imutabile
+
+Nu poți schimba un caracter dintr-un string. Creezi unul nou:
+
+```go,compile_fail
+package main
+
+func main() {
+	s := "pisică"
+	s[0] = 'P' // eroare: cannot assign to s[0] (neither addressable nor a map index expression)
+}
+```
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	s := "pisică"
+	r := []rune(s) // conversie la slice de caractere
+	r[0] = 'P'
+	fmt.Println(string(r)) // Pisică
+}
+```
+
+## Concatenare
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	prenume, nume := "Ana", "Pop"
+	complet := prenume + " " + nume
+	complet += "!"
+	fmt.Println(complet)
+	fmt.Println(fmt.Sprintf("%s are %d ani", prenume, 30))
+}
+```
+
+## Pachetul `strings`
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func main() {
+	s := "  Go este simplu și rapid  "
+
+	fmt.Println(strings.TrimSpace(s))
+	fmt.Println(strings.ToUpper(s))
+	fmt.Println(strings.Contains(s, "simplu"))          // true
+	fmt.Println(strings.HasPrefix("golang", "go"))      // true
+	fmt.Println(strings.Index("golang", "lang"))        // 2
+	fmt.Println(strings.Replace("a-b-c", "-", "+", -1)) // a+b+c
+	fmt.Println(strings.Split("a,b,c", ","))            // [a b c]
+	fmt.Println(strings.Join([]string{"x", "y"}, "/"))  // x/y
+	fmt.Println(strings.Fields(s))                      // cuvintele, fără spații
+	fmt.Println(strings.Repeat("ab", 3))                // ababab
+}
+```
+
+## Conversii cu `strconv`
+
+`strconv` transformă între text și numere:
+
+```go
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func main() {
+	n, err := strconv.Atoi("42")
+	fmt.Println(n+1, err) // 43 <nil>
+
+	s := strconv.Itoa(99)
+	fmt.Println(s + "!") // 99!
+
+	f, _ := strconv.ParseFloat("3.14", 64)
+	b, _ := strconv.ParseBool("true")
+	fmt.Println(f, b)
+}
+```
+
+Atenție: `string(65)` **nu** dă `"65"`, ci `"A"` (caracterul cu codul 65). Pentru numere folosește `strconv.Itoa`. `go vet` semnalează această greșeală.
+
+## Compararea
+
+`==` compară conținutul, iar `<` și `>` compară lexicografic, octet cu octet:
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func main() {
+	fmt.Println("abc" == "abc", "abc" < "abd") // true true
+	fmt.Println(strings.EqualFold("Go", "GO")) // true: fără a ține cont de majuscule
+}
+```
+
+## Pe scurt
+
+- `string` = octeți imutabili, de obicei UTF-8.
+- `len` numără octeți; `utf8.RuneCountInString` numără caractere.
+- `s[i]` e un octet; `range` dă caractere (`rune`).
+- `strings` pentru căutare și transformări, `strconv` pentru numere.
+- `string(65)` e `"A"`, nu `"65"`.

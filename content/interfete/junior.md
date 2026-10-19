@@ -1,0 +1,170 @@
+# Interfețe — Junior
+
+O **interfață** descrie un comportament: o listă de metode. Orice tip care are toate acele metode o implementează **automat**, fără să declare asta explicit. Nu există cuvântul `implements` în Go.
+
+## Definirea și implementarea unei interfețe
+
+```go
+package main
+
+import (
+	"fmt"
+	"math"
+)
+
+type Forma interface {
+	Arie() float64
+}
+
+type Dreptunghi struct{ L, H float64 }
+type Cerc struct{ R float64 }
+
+func (d Dreptunghi) Arie() float64 { return d.L * d.H }
+func (c Cerc) Arie() float64       { return math.Pi * c.R * c.R }
+
+func main() {
+	forme := []Forma{Dreptunghi{2, 3}, Cerc{1}}
+	total := 0.0
+	for _, f := range forme {
+		total += f.Arie() // apelul ajunge la metoda tipului concret
+	}
+	fmt.Printf("arie totală: %.2f\n", total)
+}
+```
+
+`Dreptunghi` și `Cerc` nu știu nimic despre `Forma`. Ajunge că au metoda `Arie() float64`.
+
+## Funcții care primesc interfețe
+
+O funcție care primește o interfață lucrează cu orice tip care o implementează, inclusiv cu tipuri scrise mai târziu:
+
+```go
+package main
+
+import "fmt"
+
+type Vorbitor interface {
+	Saluta() string
+}
+
+type Roman struct{}
+type Englez struct{}
+
+func (Roman) Saluta() string  { return "Bună ziua!" }
+func (Englez) Saluta() string { return "Hello!" }
+
+func prezinta(v Vorbitor) {
+	fmt.Println(v.Saluta())
+}
+
+func main() {
+	prezinta(Roman{})
+	prezinta(Englez{})
+}
+```
+
+## `fmt.Stringer`
+
+Cea mai cunoscută interfață mică din biblioteca standard. Dacă tipul tău are `String() string`, `fmt` o folosește la afișare:
+
+```go
+package main
+
+import "fmt"
+
+type Temperatura float64
+
+func (t Temperatura) String() string {
+	return fmt.Sprintf("%.1f°C", float64(t))
+}
+
+func main() {
+	var t Temperatura = 21.456
+	fmt.Println(t) // 21.5°C
+}
+```
+
+## Interfața goală: `any`
+
+`any` (alias pentru `interface{}`) nu cere nicio metodă, deci orice valoare o implementează. E utilă când chiar nu știi tipul (de exemplu la `fmt.Println`), dar pierzi verificarea tipurilor la compilare. Folosește-o cu măsură.
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	var x any
+	x = 42
+	fmt.Println(x)
+	x = "text"
+	fmt.Println(x)
+	x = []int{1, 2}
+	fmt.Println(x)
+}
+```
+
+## Type assertion: aflăm tipul concret
+
+`v.(T)` extrage valoarea de tip `T` dintr-o interfață. Forma cu două rezultate nu dă panic dacă tipul e altul:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	var x any = "salut"
+
+	s, ok := x.(string)
+	fmt.Println(s, ok) // salut true
+
+	n, ok := x.(int)
+	fmt.Println(n, ok) // 0 false
+
+	// x.(int) fără ok ar da panic: interface conversion
+}
+```
+
+## Type switch
+
+Când ai mai multe tipuri posibile, un **type switch** e mai clar decât un șir de assertions:
+
+```go
+package main
+
+import "fmt"
+
+func descrie(x any) string {
+	switch v := x.(type) {
+	case int:
+		return fmt.Sprintf("întreg: %d", v)
+	case string:
+		return fmt.Sprintf("text de %d octeți", len(v))
+	case bool:
+		return fmt.Sprintf("boolean: %t", v)
+	case nil:
+		return "nimic"
+	default:
+		return fmt.Sprintf("alt tip: %T", v)
+	}
+}
+
+func main() {
+	fmt.Println(descrie(7))
+	fmt.Println(descrie("Go"))
+	fmt.Println(descrie(true))
+	fmt.Println(descrie(nil))
+	fmt.Println(descrie(3.14))
+}
+```
+
+În fiecare ramură, `v` are tipul din `case`.
+
+## Pe scurt
+
+- O interfață e o listă de metode; implementarea e implicită.
+- Funcțiile care primesc interfețe funcționează cu orice tip potrivit.
+- `String() string` controlează afișarea cu `fmt`.
+- `any` acceptă orice, dar pierzi verificarea la compilare.
+- `v, ok := x.(T)` și `switch x.(type)` recuperează tipul concret.

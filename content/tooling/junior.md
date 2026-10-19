@@ -1,0 +1,117 @@
+# Tooling și profiling — Junior
+
+Una dintre cele mai mari calități ale Go e setul de unelte inclus: formatare, analiză statică, documentație, testare, profilare și cross-compilare, toate prin comanda `go`, fără configurare.
+
+## `gofmt`: un singur stil
+
+```bash
+go fmt ./...        # formatează toate fișierele (rulează gofmt -w)
+gofmt -d .          # arată diferențele fără să modifice
+```
+
+În Go nu există dezbateri despre tab-uri vs. spații sau unde stau acoladele: `gofmt` decide, iar tot ecosistemul îl folosește. Editoarele îl rulează automat la salvare.
+
+## `go vet`: greșeli frecvente
+
+`go vet` găsește cod care compilează, dar e aproape sigur greșit:
+
+```go,ignore
+fmt.Printf("%d\n", "text")      // vet: format %d has arg "text" of wrong type string
+var mu sync.Mutex; m := mu      // vet: assignment copies lock value
+ctx, _ := context.WithTimeout(...) // vet: the cancel function is not used
+if x := 5; x == 5 || x == 5 {}  // vet: redundant or: x == 5 || x == 5
+```
+
+```bash
+go vet ./...
+```
+
+`go test` rulează automat un subset al verificărilor `vet` înaintea testelor.
+
+## `go doc`: documentația din terminal
+
+```bash
+go doc strings.Cut
+go doc -all net/http.Client
+go doc -http          # (Go 1.25) pornește local documentația în browser
+```
+
+Documentația vine direct din comentariile din cod. Un comentariu care începe cu numele elementului, chiar deasupra lui, devine documentația lui:
+
+```go,ignore
+// Aduna întoarce suma lui a și b.
+func Aduna(a, b int) int { return a + b }
+```
+
+Pentru pachetele publice, aceeași documentație apare pe pkg.go.dev.
+
+## Construire, rulare, instalare
+
+| Comandă | Ce face |
+|---|---|
+| `go run .` | compilează într-un director temporar și rulează |
+| `go build -o app .` | creează executabilul `app` |
+| `go install ./cmd/unealta` | instalează în `$(go env GOPATH)/bin` |
+| `go install golang.org/x/tools/cmd/stringer@latest` | instalează o unealtă externă |
+| `go clean -cache` | golește cache-ul de build |
+| `go env` | arată configurația (GOPATH, GOCACHE, GOOS...) |
+
+## Cross-compilare
+
+Compilezi pentru alt sistem de operare sau altă arhitectură setând două variabile. Nu ai nevoie de nimic instalat în plus:
+
+```bash
+GOOS=windows GOARCH=amd64 go build -o app.exe .
+GOOS=linux   GOARCH=arm64 go build -o app-arm .   # de ex. pentru un Raspberry Pi
+GOOS=darwin  GOARCH=arm64 go build -o app-mac .
+go tool dist list                                  # toate combinațiile suportate
+```
+
+```go
+package main
+
+import (
+	"fmt"
+	"runtime"
+)
+
+func main() {
+	fmt.Printf("compilat pentru %s/%s\n", runtime.GOOS, runtime.GOARCH)
+}
+```
+
+## `gopls`: suportul pentru editor
+
+`gopls` e serverul de limbaj oficial: completare, navigare la definiții, redenumiri sigure, erori în timp real, sugestii de modernizare. VS Code (extensia Go), GoLand, Neovim, Emacs, Zed îl folosesc.
+
+## Linters suplimentare
+
+| Unealtă | Pentru |
+|---|---|
+| `staticcheck` | sute de verificări de corectitudine, simplificare și performanță |
+| `golangci-lint` | rulează zeci de linters împreună, cu o singură configurație |
+| `govulncheck` | vulnerabilități cunoscute în dependențele **pe care le apelezi efectiv** |
+
+```bash
+go install golang.org/x/vuln/cmd/govulncheck@latest
+govulncheck ./...
+```
+
+## Primul profil
+
+Când un program e lent, nu ghici: **măsoară**. Cea mai simplă cale e un benchmark cu profil CPU:
+
+```bash
+go test -bench=. -cpuprofile=cpu.out
+go tool pprof -http=:8080 cpu.out     # flame graph în browser
+```
+
+Nivelul Middle intră în detalii.
+
+## Pe scurt
+
+- `go fmt` și `go vet` la fiecare commit (sau la salvare).
+- `go doc` citește documentația scrisă în comentarii.
+- `GOOS`/`GOARCH` pentru cross-compilare, fără unelte extra.
+- `gopls` în editor; `staticcheck`/`golangci-lint` și `govulncheck` în CI.
+- Pentru performanță: măsoară cu `pprof`, nu ghici.

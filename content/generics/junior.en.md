@@ -1,0 +1,166 @@
+# Generics — Junior
+
+Since Go 1.18, functions and types can have **type parameters**. You write the code once and use it with several types, keeping compile-time checks.
+
+## The problem
+
+Without generics, finding the maximum of a slice of `int` and of `float64` takes two identical functions, or `any` with run-time conversions:
+
+```go,ignore
+func MaxInt(s []int) int { ... }
+func MaxFloat(s []float64) float64 { ... }
+```
+
+## A generic function
+
+Type parameters go in square brackets, before the ordinary parameters. Each has a **constraint** that says which types are allowed:
+
+```go
+package main
+
+import (
+	"cmp"
+	"fmt"
+)
+
+func Max[T cmp.Ordered](s []T) T {
+	m := s[0]
+	for _, v := range s[1:] {
+		if v > m {
+			m = v
+		}
+	}
+	return m
+}
+
+func main() {
+	fmt.Println(Max([]int{3, 7, 2}))            // 7
+	fmt.Println(Max([]float64{1.5, 0.2}))       // 1.5
+	fmt.Println(Max([]string{"apple", "pear"})) // pear
+}
+```
+
+`cmp.Ordered` includes every type that supports `<` and `>`: numbers and strings.
+
+## Type inference
+
+Above we didn't write `Max[int](...)`: the compiler inferred `T` from the arguments. You can write the type explicitly when it can't be inferred:
+
+```go
+package main
+
+import "fmt"
+
+func Zero[T any]() T {
+	var z T // the zero value of T
+	return z
+}
+
+func main() {
+	fmt.Println(Zero[int]())           // 0
+	fmt.Printf("%q\n", Zero[string]()) // ""
+}
+```
+
+## Basic constraints
+
+| Constraint | What it allows |
+|---|---|
+| `any` | any type; you can only assign, pass, return |
+| `comparable` | types supporting `==` and `!=` (can be map keys) |
+| `cmp.Ordered` | types with `<`, `<=`, `>`, `>=` |
+
+```go
+package main
+
+import "fmt"
+
+func Contains[T comparable](s []T, x T) bool {
+	for _, v := range s {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}
+
+func main() {
+	fmt.Println(Contains([]string{"a", "b"}, "b")) // true
+	fmt.Println(Contains([]int{1, 2}, 5))          // false
+}
+```
+
+## Functions with several type parameters
+
+```go
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func Map[T, U any](s []T, f func(T) U) []U {
+	res := make([]U, 0, len(s))
+	for _, v := range s {
+		res = append(res, f(v))
+	}
+	return res
+}
+
+func main() {
+	numbers := []int{1, 2, 3}
+	texts := Map(numbers, strconv.Itoa)
+	fmt.Printf("%q\n", texts) // ["1" "2" "3"]
+}
+```
+
+## Generic types
+
+Types can have parameters too. A stack that works with any type:
+
+```go
+package main
+
+import "fmt"
+
+type Stack[T any] struct {
+	items []T
+}
+
+func (s *Stack[T]) Push(v T) {
+	s.items = append(s.items, v)
+}
+
+func (s *Stack[T]) Pop() (T, bool) {
+	var zero T
+	if len(s.items) == 0 {
+		return zero, false
+	}
+	v := s.items[len(s.items)-1]
+	s.items = s.items[:len(s.items)-1]
+	return v, true
+}
+
+func main() {
+	var s Stack[string]
+	s.Push("a")
+	s.Push("b")
+	v, _ := s.Pop()
+	fmt.Println(v) // b
+}
+```
+
+When you use the type, you give it the argument: `Stack[string]`, `Stack[int]`.
+
+## Generics in the standard library
+
+You've already used generics without knowing: `slices.Sort`, `slices.Contains`, `maps.Keys`, `min` and `max` are all generic.
+
+## Summary
+
+- `func F[T Constraint](x T)` declares a type parameter.
+- The type is usually inferred from the arguments.
+- `any`, `comparable` and `cmp.Ordered` cover most cases.
+- `var zero T` gives the zero value of a generic type.
+- Generic types are instantiated with `Type[Argument]`.

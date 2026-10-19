@@ -1,0 +1,221 @@
+# Arrays și slices — Middle
+
+Aproape toate bug-urile cu slices au aceeași cauză: mai multe slices **împart același array**. La nivelul acesta vedem când se întâmplă asta, cum o controlezi și ce operații comune oferă pachetul `slices`.
+
+## Slices care împart memoria
+
+Un sub-slice nu copiază elementele. Scrierea prin unul se vede în celălalt:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	original := []int{1, 2, 3, 4, 5}
+	mijloc := original[1:4] // [2 3 4], același array
+	mijloc[0] = 99
+	fmt.Println(original) // [1 99 3 4 5]
+}
+```
+
+## Capcana lui `append` pe un sub-slice
+
+Dacă sub-slice-ul are capacitate rămasă, `append` scrie **în array-ul comun**, peste elementele slice-ului original:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	s := []int{1, 2, 3, 4}
+	prim := s[:2]           // len 2, cap 4
+	prim = append(prim, 99) // încape: suprascrie s[2]
+	fmt.Println(s)          // [1 2 99 4]
+}
+```
+
+**Expresia completă** `s[a:b:c]` limitează capacitatea la `c-a`. Un `append` ulterior e obligat să aloce un array nou:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	s := []int{1, 2, 3, 4}
+	prim := s[:2:2]         // len 2, cap 2
+	prim = append(prim, 99) // nu încape: array nou
+	fmt.Println(s, prim)    // [1 2 3 4] [1 2 99]
+}
+```
+
+Când o funcție întoarce un sub-slice dintr-o structură internă, `s[a:b:b]` sau `slices.Clone` protejează datele tale de `append`-urile apelantului.
+
+## Prealocarea
+
+Dacă știi (sau poți estima) câte elemente vor fi, alocă dinainte. Eviți realocările și copierile repetate:
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func majuscule(cuvinte []string) []string {
+	rez := make([]string, 0, len(cuvinte)) // o singură alocare
+	for _, c := range cuvinte {
+		rez = append(rez, strings.ToUpper(c))
+	}
+	return rez
+}
+
+func main() {
+	fmt.Println(majuscule([]string{"go", "e", "rapid"}))
+}
+```
+
+Atenție la confuzia `make([]T, n)` vs `make([]T, 0, n)`: prima variantă are deja `n` elemente zero, iar `append` adaugă **după** ele.
+
+## nil vs. slice gol
+
+Un slice `nil` și unul gol (`[]int{}`) au amândouă lungime 0 și se comportă la fel la `len`, `range` și `append`. Diferența apare la comparația cu `nil` și la serializare:
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+func main() {
+	var a []int                     // nil
+	b := []int{}                    // gol, non-nil
+	fmt.Println(a == nil, b == nil) // true false
+
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	fmt.Println(string(ja), string(jb)) // null []
+}
+```
+
+Pentru verificări, folosește `len(s) == 0`, nu `s == nil`.
+
+## Operații uzuale cu `slices`
+
+```go
+package main
+
+import (
+	"fmt"
+	"slices"
+)
+
+func main() {
+	s := []int{3, 1, 4, 1, 5, 9, 2, 6}
+
+	s = slices.Delete(s, 1, 3) // șterge indicii 1 și 2
+	fmt.Println(s)             // [3 1 5 9 2 6]
+
+	s = slices.Insert(s, 0, 100)
+	fmt.Println(s) // [100 3 1 5 9 2 6]
+
+	s = slices.DeleteFunc(s, func(x int) bool { return x%2 == 0 })
+	fmt.Println(s) // [3 1 5 9]
+
+	slices.Sort(s)
+	i, gasit := slices.BinarySearch(s, 5)
+	fmt.Println(s, i, gasit) // [1 3 5 9] 2 true
+
+	d := []int{1, 1, 2, 2, 2, 3}
+	fmt.Println(slices.Compact(d)) // [1 2 3]: elimină duplicatele consecutive
+	fmt.Println(slices.Equal([]int{1, 2}, []int{1, 2}))
+}
+```
+
+## Sortare după criterii proprii
+
+`slices.SortFunc` primește o funcție de comparație care întoarce un număr negativ, zero sau pozitiv; `cmp.Compare` și `cmp.Or` (pentru mai multe criterii) o fac ușor de scris:
+
+```go
+package main
+
+import (
+	"cmp"
+	"fmt"
+	"slices"
+)
+
+type Angajat struct {
+	Nume   string
+	Varsta int
+}
+
+func main() {
+	a := []Angajat{{"Ion", 30}, {"Ana", 25}, {"Dan", 30}}
+	slices.SortFunc(a, func(x, y Angajat) int {
+		return cmp.Or(
+			cmp.Compare(y.Varsta, x.Varsta), // vârsta descrescător
+			cmp.Compare(x.Nume, y.Nume),     // apoi numele crescător
+		)
+	})
+	fmt.Println(a) // [{Dan 30} {Ion 30} {Ana 25}]
+}
+```
+
+`slices.SortStableFunc` păstrează ordinea elementelor egale.
+
+## Filtrare pe loc
+
+Un tipar clasic care reutilizează array-ul existent, fără alocare:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	s := []int{1, 2, 3, 4, 5, 6}
+	pare := s[:0] // aceeași memorie, lungime 0
+	for _, x := range s {
+		if x%2 == 0 {
+			pare = append(pare, x)
+		}
+	}
+	fmt.Println(pare) // [2 4 6]
+}
+```
+
+După filtrare, `s` original nu mai trebuie folosit: conținutul lui a fost suprascris.
+
+## Array-urile sunt valori
+
+Spre deosebire de slices, array-urile sunt **copiate** la atribuire și la apeluri. Sunt și comparabile cu `==`, deci pot fi chei de map:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	a := [2]int{1, 2}
+	b := a // copie completă
+	b[0] = 100
+	fmt.Println(a, b, a == [2]int{1, 2}) // [1 2] [100 2] true
+
+	vizitat := map[[2]int]bool{{0, 0}: true}
+	fmt.Println(vizitat[[2]int{0, 0}])
+}
+```
+
+## Pe scurt
+
+- Sub-slices împart array-ul; `append` pe ele poate suprascrie date.
+- `s[a:b:c]` sau `slices.Clone` izolează un sub-slice.
+- Prealocă cu `make([]T, 0, n)`.
+- Verifică golul cu `len(s) == 0`; `nil` și `[]` diferă la JSON.
+- Pachetul `slices` + `cmp` acoperă sortarea, căutarea și ștergerea.

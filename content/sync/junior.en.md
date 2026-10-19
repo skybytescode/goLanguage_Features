@@ -1,0 +1,184 @@
+# Sync and atomic — Junior
+
+When several goroutines use the **same** variable and at least one modifies it, you need synchronization. The `sync` package offers simple tools for that: `Mutex`, `WaitGroup`, `Once`. The `sync/atomic` package offers atomic operations on numbers.
+
+## The problem
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	balance := 0
+	var wg sync.WaitGroup
+	for range 1000 {
+		wg.Go(func() {
+			balance += 10 // several goroutines write at once: unpredictable result
+		})
+	}
+	wg.Wait()
+	fmt.Println(balance) // should be 10000, but is often less
+}
+```
+
+`balance += 10` is really three steps: read, add, write. Two goroutines can read the same old value and one of the writes gets lost.
+
+## `sync.Mutex`
+
+A **mutex** (mutual exclusion) lets only one goroutine into a section of code. The others wait at `Lock`:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	var (
+		mu      sync.Mutex
+		balance int
+		wg      sync.WaitGroup
+	)
+	for range 1000 {
+		wg.Go(func() {
+			mu.Lock()
+			balance += 10
+			mu.Unlock()
+		})
+	}
+	wg.Wait()
+	fmt.Println(balance) // 10000, guaranteed
+}
+```
+
+## `defer Unlock`
+
+The safest pattern: `Unlock` deferred right after `Lock`. The mutex is released even if the function returns early or panics:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+)
+
+type Account struct {
+	mu      sync.Mutex
+	balance int
+}
+
+func (a *Account) Withdraw(amount int) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if amount > a.balance {
+		return errors.New("insufficient funds") // Unlock runs here too
+	}
+	a.balance -= amount
+	return nil
+}
+
+func (a *Account) Deposit(amount int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.balance += amount
+}
+
+func main() {
+	var a Account
+	a.Deposit(100)
+	fmt.Println(a.Withdraw(30))  // <nil>
+	fmt.Println(a.Withdraw(500)) // insufficient funds
+	fmt.Println(a.balance)       // 70
+}
+```
+
+The convention: the mutex lives in the struct, **next to** the data it protects, and the zero value is ready to use.
+
+## `sync.Once`: exactly once
+
+`Once.Do(f)` runs `f` exactly once, no matter how many goroutines call it at the same time. It's ideal for lazy initialization:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+var (
+	once   sync.Once
+	config map[string]string
+)
+
+func Config() map[string]string {
+	once.Do(func() {
+		fmt.Println("loading configuration...") // appears only once
+		config = map[string]string{"port": "8080"}
+	})
+	return config
+}
+
+func main() {
+	var wg sync.WaitGroup
+	for range 5 {
+		wg.Go(func() { _ = Config() })
+	}
+	wg.Wait()
+	fmt.Println(Config()["port"])
+}
+```
+
+## `sync/atomic` for counters
+
+For a simple counter, an atomic type is simpler and faster than a mutex:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"sync/atomic"
+)
+
+func main() {
+	var visits atomic.Int64
+	var wg sync.WaitGroup
+	for range 1000 {
+		wg.Go(func() {
+			visits.Add(1)
+		})
+	}
+	wg.Wait()
+	fmt.Println(visits.Load()) // 1000
+}
+```
+
+The atomic types (`atomic.Int32`, `Int64`, `Uint64`, `Bool`, `Pointer[T]`) have `Load`, `Store`, `Add` (on numbers), `Swap` and `CompareAndSwap` methods.
+
+## What to choose
+
+| Situation | Tool |
+|---|---|
+| a counter or a flag | `atomic.Int64`, `atomic.Bool` |
+| several fields that must change together | `sync.Mutex` |
+| one-time initialization | `sync.Once` |
+| waiting for a group of goroutines to finish | `sync.WaitGroup` |
+| passing data between goroutines | channels |
+
+## Summary
+
+- Concurrent access with writes requires synchronization.
+- `mu.Lock()` + `defer mu.Unlock()` is the basic pattern.
+- The mutex lives next to the data it protects.
+- `sync.Once` for initialization, `atomic` for counters.
+- Check everything with `go test -race`.

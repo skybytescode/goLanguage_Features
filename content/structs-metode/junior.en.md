@@ -1,0 +1,192 @@
+# Structs and methods — Junior
+
+Go has no classes. Instead, you use **structs** (`struct`) for data and **methods** attached to types for behavior.
+
+## Defining a struct
+
+A struct groups named fields:
+
+```go
+package main
+
+import "fmt"
+
+type Book struct {
+	Title  string
+	Author string
+	Pages  int
+}
+
+func main() {
+	b := Book{Title: "Ion", Author: "Liviu Rebreanu", Pages: 480}
+	fmt.Println(b.Title, "by", b.Author)
+
+	b.Pages = 500 // fields are modified directly
+	fmt.Printf("%+v\n", b)
+}
+```
+
+## Ways to create a struct
+
+```go
+package main
+
+import "fmt"
+
+type Point struct {
+	X, Y int
+}
+
+func main() {
+	a := Point{1, 2}        // positional: fragile if the field order changes
+	b := Point{X: 3}        // named: missing fields get the zero value (Y = 0)
+	var c Point             // the zero value: {0 0}
+	d := &Point{X: 5, Y: 6} // a pointer to a new struct
+
+	fmt.Println(a, b, c, *d)
+}
+```
+
+Always prefer the **named** field form: it stays correct when you add new fields.
+
+## Methods
+
+A method is a function with a **receiver**, written between `func` and the method name:
+
+```go
+package main
+
+import (
+	"fmt"
+	"math"
+)
+
+type Circle struct {
+	Radius float64
+}
+
+func (c Circle) Area() float64 {
+	return math.Pi * c.Radius * c.Radius
+}
+
+func (c Circle) Perimeter() float64 {
+	return 2 * math.Pi * c.Radius
+}
+
+func main() {
+	c := Circle{Radius: 2}
+	fmt.Printf("area %.2f, perimeter %.2f\n", c.Area(), c.Perimeter())
+}
+```
+
+## Value receiver vs. pointer receiver
+
+With a **value** receiver (`c Circle`), the method works on a copy. To modify the struct, the method needs a **pointer** receiver (`c *Circle`):
+
+```go
+package main
+
+import "fmt"
+
+type Account struct {
+	Balance int
+}
+
+func (a Account) Print() {
+	fmt.Println("balance:", a.Balance)
+}
+
+func (a *Account) Deposit(amount int) {
+	a.Balance += amount
+}
+
+func main() {
+	acc := Account{}
+	acc.Deposit(100) // Go takes &acc automatically
+	acc.Deposit(50)
+	acc.Print() // balance: 150
+}
+```
+
+The rule of thumb: if **one** method of a type needs a pointer receiver, use pointer receivers on **all** of them, for consistency.
+
+## Methods on any defined type
+
+Methods aren't just for structs. Any type defined in your package can have methods:
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type Words []string
+
+func (w Words) Join() string {
+	return strings.Join(w, " ")
+}
+
+func main() {
+	w := Words{"Go", "is", "simple"}
+	fmt.Println(w.Join())
+}
+```
+
+## Exported and unexported fields
+
+A name that starts with an **uppercase letter** is visible from other packages (exported). With a lowercase letter, it's visible only within the current package. The rule applies equally to types, fields, functions and methods.
+
+```go,ignore
+type User struct {
+	Name     string // exported
+	password string // private to the package
+}
+```
+
+## Anonymous structs
+
+For data used only once (for example in tests), you can declare the struct inline:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	tests := []struct {
+		input    int
+		expected int
+	}{
+		{1, 2},
+		{5, 10},
+	}
+	for _, t := range tests {
+		fmt.Println(t.input*2 == t.expected)
+	}
+}
+```
+
+## Comparing structs
+
+Two structs can be compared with `==` if all their fields are comparable. They're equal if all fields are equal:
+
+```go
+package main
+
+import "fmt"
+
+type Point struct{ X, Y int }
+
+func main() {
+	fmt.Println(Point{1, 2} == Point{1, 2}) // true
+}
+```
+
+## Summary
+
+- `struct` groups data; methods add behavior.
+- Use named fields when initializing.
+- Pointer receivers for methods that modify; be consistent across the type.
+- Uppercase = exported, lowercase = private to the package.

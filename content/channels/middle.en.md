@@ -1,0 +1,238 @@
+# Channels — Middle
+
+Channels become an architectural tool through a few classic patterns: worker pool, pipeline, fan-out/fan-in and stop signals. Also here: the closing rules, which prevent most channel panics.
+
+## The closing rules
+
+| Operation | `nil` channel | open channel | closed channel |
+|---|---|---|---|
+| send `ch <- v` | blocks forever | sends or blocks | **panic** |
+| receive `<-ch` | blocks forever | receives or blocks | zero value, immediately |
+| `close(ch)` | **panic** | closes | **panic** |
+
+Hence the practical rules:
+
+1. **Only the sender closes** the channel, never the receiver.
+2. If there are **several** senders, a coordinator closes it, after they've all finished (usually after a `WaitGroup`).
+3. Closing isn't mandatory: it's a **signal** to receivers ("nothing more is coming"), it doesn't free memory. An unclosed, unreferenced channel is collected by the GC.
+
+```go,panic
+package main
+
+func main() {
+	ch := make(chan int, 1)
+	close(ch)
+	ch <- 1 // panic: send on closed channel
+}
+```
+
+## Worker pool
+
+A fixed number of goroutines consume tasks from one channel and write results to another. Concurrency is naturally limited to the number of workers:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+type Task struct{ ID, N int }
+type Result struct{ ID, Square int }
+
+func worker(tasks <-chan Task, results chan<- Result) {
+	for t := range tasks { // stops when tasks is closed
+		time.Sleep(5 * time.Millisecond) // "work"
+		results <- Result{t.ID, t.N * t.N}
+	}
+}
+
+func main() {
+	tasks := make(chan Task)
+	results := make(chan Result)
+
+	var wg sync.WaitGroup
+	for range 3 { // 3 workers
+		wg.Go(func() { worker(tasks, results) })
+	}
+
+	go func() { // the producer
+		for i := 1; i <= 9; i++ {
+			tasks <- Task{ID: i, N: i}
+		}
+		close(tasks)
+	}()
+
+	go func() { // the coordinator closes results once every worker is done
+		wg.Wait()
+		close(results)
+	}()
+
+	sum := 0
+	for r := range results {
+		sum += r.Square
+	}
+	fmt.Println("sum:", sum) // 285
+}
+```
+
+Results arrive in **any order**. If order matters, keep the `ID` and sort at the end, or write into a slice at position `ID`.
+
+## Pipeline
+
+Each stage takes a channel and returns another. The stages run concurrently, and values flow through them:
+
+```go
+package main
+
+import "fmt"
+
+func generate(nums ...int) <-chan int {
+	out := make(chan int)
+	go func() {
+		defer close(out)
+		for _, n := range nums {
+			out <- n
+		}
+	}()
+	return out
+}
+
+func square(in <-chan int) <-chan int {
+	out := make(chan int)
+	go func() {
+		defer close(out)
+		for n := range in {
+			out <- n * n
+		}
+	}()
+	return out
+}
+
+func keepEven(in <-chan int) <-chan int {
+	out := make(chan int)
+	go func() {
+		defer close(out)
+		for n := range in {
+			if n%2 == 0 {
+				out <- n
+			}
+		}
+	}()
+	return out
+}
+
+func main() {
+	for v := range keepEven(square(generate(1, 2, 3, 4, 5, 6))) {
+		fmt.Print(v, " ") // 4 16 36
+	}
+	fmt.Println()
+}
+```
+
+Each stage closes its output channel with `defer close(out)`: closing propagates through the whole pipeline.
+
+## Fan-out, fan-in
+
+**Fan-out**: several goroutines read from the same channel (as in the worker pool). **Fan-in**: values from several channels are merged into one:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func merge[T any](sources ...<-chan T) <-chan T {
+	out := make(chan T)
+	var wg sync.WaitGroup
+	for _, s := range sources {
+		wg.Go(func() {
+			for v := range s {
+				out <- v
+			}
+		})
+	}
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out
+}
+
+func numbers(from, to int) <-chan int {
+	out := make(chan int)
+	go func() {
+		defer close(out)
+		for i := from; i <= to; i++ {
+			out <- i
+		}
+	}()
+	return out
+}
+
+func main() {
+	total := 0
+	for v := range merge(numbers(1, 10), numbers(11, 20), numbers(21, 30)) {
+		total += v
+	}
+	fmt.Println(total) // 465
+}
+```
+
+## Stop signal: a `done` channel
+
+Closing a channel is seen by **all** receivers at once, so it's the perfect mechanism for "everyone stop". A `chan struct{}` carries no data, just the signal:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func work(id int, done <-chan struct{}) {
+	for {
+		select {
+		case <-done:
+			fmt.Println("worker", id, "stopping")
+			return
+		default:
+			time.Sleep(5 * time.Millisecond) // a chunk of work
+		}
+	}
+}
+
+func main() {
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range 3 {
+		wg.Go(func() { work(i, done) })
+	}
+	time.Sleep(20 * time.Millisecond)
+	close(done) // everyone gets the signal
+	wg.Wait()
+}
+```
+
+In real code, `context.Context` (which uses exactly this mechanism internally, via `ctx.Done()`) is the standard option. See [Context](../../context/middle/) and [Select](../../select/junior/).
+
+## Buffer size
+
+- **0 (unbuffered)**: guaranteed synchronization; the sender knows the value was received.
+- **1**: useful for signals that shouldn't block the sender (for example a single result).
+- **A known N**: when you know exactly how many values there will be (one result per goroutine), so no goroutine is left blocked.
+- **Large, "so it won't block"**: almost always a mistake; it hides a speed mismatch between producer and consumer until the buffer fills up anyway.
+
+## Summary
+
+- Sending on a closed channel and closing twice both panic.
+- Only the sender closes; with several senders, a coordinator.
+- Worker pool, pipeline and fan-in/fan-out are the basic patterns.
+- `close(done)` stops every receiver at once.
+- Pick the buffer size for semantics, not to hide blocking.

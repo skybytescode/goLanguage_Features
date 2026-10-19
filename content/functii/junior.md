@@ -1,0 +1,177 @@
+# Funcții și closures — Junior
+
+Funcțiile sunt blocurile de bază ale unui program Go. Pot primi mai mulți parametri, pot returna mai multe valori și pot fi păstrate în variabile ca orice altă valoare.
+
+## Declararea unei funcții
+
+```go
+package main
+
+import "fmt"
+
+func aduna(a int, b int) int {
+	return a + b
+}
+
+// parametrii consecutivi de același tip pot împărți tipul
+func inmulteste(a, b int) int {
+	return a * b
+}
+
+func main() {
+	fmt.Println(aduna(2, 3))      // 5
+	fmt.Println(inmulteste(4, 5)) // 20
+}
+```
+
+Tipul vine **după** nume, atât la parametri, cât și la rezultat.
+
+## Mai multe valori returnate
+
+O funcție poate întoarce mai multe valori. Cel mai des, ultima e o eroare:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+func imparte(a, b float64) (float64, error) {
+	if b == 0 {
+		return 0, errors.New("împărțire la zero")
+	}
+	return a / b, nil
+}
+
+func main() {
+	rez, err := imparte(10, 4)
+	if err != nil {
+		fmt.Println("eroare:", err)
+		return
+	}
+	fmt.Println(rez) // 2.5
+
+	_, err = imparte(1, 0) // ignorăm rezultatul cu _
+	fmt.Println(err)
+}
+```
+
+## Rezultate cu nume
+
+Rezultatele pot avea nume. Sunt variabile obișnuite, inițializate cu valoarea zero; un `return` gol le întoarce:
+
+```go
+package main
+
+import "fmt"
+
+func minMax(numere []int) (mic, mare int) {
+	mic, mare = numere[0], numere[0]
+	for _, n := range numere {
+		if n < mic {
+			mic = n
+		}
+		if n > mare {
+			mare = n
+		}
+	}
+	return // întoarce mic și mare
+}
+
+func main() {
+	fmt.Println(minMax([]int{3, 9, 1, 7})) // 1 9
+}
+```
+
+Numele ajută la documentare. `return` gol e potrivit doar în funcții scurte; în cele lungi face codul greu de urmărit.
+
+## Funcții variadice
+
+Ultimul parametru poate primi oricâte valori, cu `...`. În funcție, el e un slice:
+
+```go
+package main
+
+import "fmt"
+
+func suma(numere ...int) int {
+	total := 0
+	for _, n := range numere {
+		total += n
+	}
+	return total
+}
+
+func main() {
+	fmt.Println(suma())        // 0
+	fmt.Println(suma(1, 2, 3)) // 6
+
+	valori := []int{10, 20}
+	fmt.Println(suma(valori...)) // un slice existent, „despachetat”
+}
+```
+
+`fmt.Println` e și ea variadică: `func Println(a ...any)`.
+
+## Funcțiile sunt valori
+
+Poți păstra o funcție într-o variabilă, o poți trimite ca parametru sau o poți întoarce:
+
+```go
+package main
+
+import "fmt"
+
+func aplica(numere []int, f func(int) int) []int {
+	rez := make([]int, 0, len(numere))
+	for _, n := range numere {
+		rez = append(rez, f(n))
+	}
+	return rez
+}
+
+func dublu(x int) int { return x * 2 }
+
+func main() {
+	fmt.Println(aplica([]int{1, 2, 3}, dublu)) // [2 4 6]
+
+	// funcție anonimă, scrisă direct la apel
+	fmt.Println(aplica([]int{1, 2, 3}, func(x int) int { return x * x })) // [1 4 9]
+}
+```
+
+## Closures
+
+O funcție anonimă poate folosi variabile din funcția în care a fost creată. Spunem că le **capturează**: le păstrează în viață și după ce funcția exterioară s-a terminat.
+
+```go
+package main
+
+import "fmt"
+
+func contor() func() int {
+	n := 0
+	return func() int {
+		n++ // modifică variabila capturată
+		return n
+	}
+}
+
+func main() {
+	urmatorul := contor()
+	fmt.Println(urmatorul(), urmatorul(), urmatorul()) // 1 2 3
+
+	altul := contor()    // alt closure, cu propriul n
+	fmt.Println(altul()) // 1
+}
+```
+
+## Pe scurt
+
+- `func nume(param tip) tipRezultat { ... }`; tipurile vin după nume.
+- O funcție poate returna mai multe valori; eroarea e de obicei ultima.
+- `...T` face o funcție variadică; `slice...` trimite un slice existent.
+- Funcțiile sunt valori: pot fi parametri, rezultate sau variabile.
+- Closure-urile capturează variabilele din jur, nu copii ale lor.

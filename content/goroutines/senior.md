@@ -1,0 +1,96 @@
+# Goroutines — Senior
+
+Cum rulează runtime-ul milioane de goroutines pe câteva fire de execuție ale sistemului: modelul G-M-P, cozile de execuție și furtul de lucru, apelurile de sistem, netpoller-ul și preempțiunea.
+
+## Modelul G-M-P
+
+| Element | Ce este |
+|---|---|
+| **G** (goroutine) | stiva, registrele salvate, starea; câțiva KB |
+| **M** (machine) | un fir de execuție al sistemului de operare |
+| **P** (processor) | un „drept de a rula cod Go”: coada locală de G-uri, cache-ul de alocare (`mcache`) etc. |
+
+Există exact `GOMAXPROCS` P-uri. Un M trebuie să dețină un P ca să execute cod Go; numărul de M-uri poate fi mai mare (cele blocate în apeluri de sistem nu dețin P). Astfel, cel mult `GOMAXPROCS` goroutines rulează cod Go în paralel, oricâte fire ar exista.
+
+```text
+          ┌──── coada globală ────┐
+          │  G  G  G              │
+          └───────────────────────┘
+   P0 [G G G G]   P1 [G G]   P2 [ ]  ← cozi locale (max 256)
+    │              │          │
+    M0             M1         M2 (caută de lucru / fură)
+```
+
+## Cozile și furtul de lucru
+
+Un `go f()` pune noul G în coada **locală** a P-ului curent (mai exact în slotul `runnext`, ca goroutine-ul nou să ruleze curând, păstrând cache-ul cald). Coada locală are 256 de locuri; la depășire, jumătate se mută în coada **globală**.
+
+Un M fără lucru caută, în ordine: `runnext` și coada locală, coada globală (din când în când o verifică oricum, ca să nu „înfometeze” G-urile de acolo: la fiecare 61 de programări), netpoller-ul, apoi **fură jumătate** din coada locală a altui P ales aleatoriu. Dacă nu găsește nimic, M-ul intră în „spinning” scurt, apoi adoarme.
+
+## Apeluri de sistem: handoff
+
+Când un G face un apel de sistem blocant (de exemplu citire dintr-un fișier), M-ul lui se blochează în kernel. Ca P-ul să nu stea degeaba, runtime-ul îl **predă** (handoff) altui M, existent sau nou. Când apelul se termină, G-ul încearcă să recupereze un P; dacă nu găsește, e pus în coada globală și M-ul se parchează.
+
+De aceea un program cu multe operații blocante pe fișiere poate avea mult mai multe fire decât `GOMAXPROCS` (limita implicită e 10.000, modificabilă cu `debug.SetMaxThreads`).
+
+## Netpoller-ul: rețea fără fire blocate
+
+Operațiile pe socket-uri nu blochează M-uri. Socket-urile sunt în mod non-blocant; când o citire ar bloca, G-ul e **parcat** și descriptorul e înregistrat în netpoller (epoll pe Linux, kqueue pe BSD/macOS, IOCP pe Windows). Când datele sosesc, netpoller-ul marchează G-ul ca gata de rulare. Așa un server Go poate ține 100.000 de conexiuni deschise cu câteva fire.
+
+Codul tău vede un apel blocant obișnuit (`conn.Read`); complexitatea e ascunsă în runtime.
+
+## Preempțiunea
+
+Până la Go 1.13, preempțiunea era **cooperativă**: un G putea fi întrerupt doar la apelurile de funcție (în prologul care verifică stiva). O buclă strânsă fără apeluri putea bloca un P la nesfârșit, inclusiv GC-ul care aștepta oprirea tuturor.
+
+Din Go 1.14, preempțiunea e și **asincronă**: firul de monitorizare `sysmon` observă G-urile care rulează de peste 10 ms și le trimite un semnal (`SIGURG` pe Unix); handler-ul de semnal oprește G-ul într-un punct sigur.
+
+```go
+package main
+
+import (
+	"fmt"
+	"runtime"
+	"time"
+)
+
+func main() {
+	runtime.GOMAXPROCS(1)
+	go func() {
+		for { // buclă strânsă, fără apeluri de funcție
+		}
+	}()
+	time.Sleep(50 * time.Millisecond)
+	fmt.Println("main a primit procesorul înapoi") // din Go 1.14 se afișează
+}
+```
+
+## `sysmon`
+
+Un fir special, fără P, care rulează periodic (între 20 µs și 10 ms): preemptează G-urile care rulează prea mult, recuperează P-urile blocate în apeluri de sistem, interoghează netpoller-ul dacă nimeni n-a făcut-o de mult și declanșează GC-ul forțat la fiecare 2 minute.
+
+## `GOMAXPROCS` în containere (Go 1.25)
+
+Valoarea implicită era numărul de nuclee ale mașinii. Într-un container limitat la 2 CPU pe o mașină cu 64 de nuclee, asta însemna 64 de P-uri și throttling sever din partea cgroup-ului. Din Go 1.25, runtime-ul citește limita de CPU din cgroup și ajustează `GOMAXPROCS` automat, inclusiv dacă limita se schimbă în timpul rulării. Setarea explicită a variabilei de mediu `GOMAXPROCS` dezactivează ajustarea.
+
+## Firul blocat: `runtime.LockOSThread`
+
+Unele biblioteci C sau API-uri de sistem (OpenGL, unele apeluri Linux pe namespace-uri) cer ca apelurile să vină de pe **același** fir. `runtime.LockOSThread` leagă G-ul curent de M-ul lui până la `UnlockOSThread`. Dacă goroutine-ul se termină fără unlock, firul e distrus, nu refolosit.
+
+## Observarea scheduler-ului
+
+```bash
+GODEBUG=schedtrace=1000 ./app          # o linie pe secundă: P-uri, M-uri, cozi
+GODEBUG=schedtrace=1000,scheddetail=1 ./app
+go test -trace=trace.out && go tool trace trace.out
+```
+
+`go tool trace` arată, pe o axă a timpului, ce G a rulat pe ce P, blocările, GC-ul și apelurile de sistem — cea mai bună unealtă pentru probleme de latență.
+
+## Pe scurt
+
+- G-uri programate pe M-uri, prin `GOMAXPROCS` P-uri.
+- Cozi locale de 256, coadă globală, furt de jumătate din coada altui P.
+- Apelurile de sistem blocante predau P-ul; rețeaua folosește netpoller-ul.
+- Preempțiune asincronă prin semnale din Go 1.14.
+- Din Go 1.25, `GOMAXPROCS` respectă limitele de CPU ale containerului.

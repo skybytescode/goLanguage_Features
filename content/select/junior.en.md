@@ -1,0 +1,172 @@
+# Select — Junior
+
+`select` waits on **several** channel operations at once and performs the first one that becomes possible. It's like a `switch`, but for channels.
+
+## Waiting on several channels
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	fast := make(chan string)
+	slow := make(chan string)
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		fast <- "fast answer"
+	}()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		slow <- "slow answer"
+	}()
+
+	for range 2 {
+		select {
+		case m := <-fast:
+			fmt.Println(m)
+		case m := <-slow:
+			fmt.Println(m)
+		}
+	}
+}
+```
+
+`select` blocks until **one** `case` can proceed, runs it, then finishes. That's why it's in a loop here, so we receive both messages.
+
+## Timeout with `time.After`
+
+`time.After(d)` returns a channel that receives a value after the duration `d`. Inside a `select`, it limits how long you wait:
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	result := make(chan string)
+	go func() {
+		time.Sleep(200 * time.Millisecond) // an operation that's too slow
+		result <- "done"
+	}()
+
+	select {
+	case r := <-result:
+		fmt.Println(r)
+	case <-time.After(50 * time.Millisecond):
+		fmt.Println("timeout: gave up after 50ms")
+	}
+}
+```
+
+## `default`: no waiting
+
+If no `case` is ready, the `default` branch runs immediately. That's how you make a **non-blocking** send or receive:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	messages := make(chan string, 1)
+
+	select {
+	case m := <-messages:
+		fmt.Println("received:", m)
+	default:
+		fmt.Println("no message") // the channel is empty
+	}
+
+	messages <- "hello"
+	select {
+	case messages <- "one more":
+		fmt.Println("sent")
+	default:
+		fmt.Println("buffer full, giving up") // we don't block
+	}
+}
+```
+
+## Sending and receiving in the same `select`
+
+A `case` can also be a send:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	in := make(chan int, 1)
+	out := make(chan int, 1)
+	in <- 5
+
+	select {
+	case v := <-in:
+		fmt.Println("read", v)
+	case out <- 10:
+		fmt.Println("wrote 10")
+	}
+}
+```
+
+Here both cases are ready. When several are ready at once, `select` picks one **at random**, so the result can differ between runs.
+
+## Listening for a stop signal
+
+The most common pattern: a goroutine works in a loop and checks on every step whether it should stop:
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	stop := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		step := 0
+		for {
+			select {
+			case <-stop:
+				fmt.Println("stopped after", step, "steps")
+				return
+			default:
+				step++
+				time.Sleep(5 * time.Millisecond)
+			}
+		}
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	close(stop)
+	<-done
+}
+```
+
+In real code, the signal usually comes from a `context.Context` (`case <-ctx.Done():`).
+
+## `select {}`
+
+A `select` with no cases blocks forever. It sometimes appears at the end of `main` in a program where goroutines do all the work (a server, for example), but there are usually clearer options.
+
+## Summary
+
+- `select` waits on several channels and runs the first ready `case`.
+- `time.After` adds a timeout.
+- `default` makes operations non-blocking.
+- When several cases are ready, the choice is random.
+- The `for { select { case <-stop: return; ... } }` pattern stops goroutines cleanly.

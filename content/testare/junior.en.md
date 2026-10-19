@@ -1,0 +1,154 @@
+# Testing, benchmarks and fuzzing — Junior
+
+Go has testing built into the language tooling: the `testing` package and the `go test` command. You don't need any external library to get started.
+
+## Your first test
+
+Tests live in files ending in `_test.go`, next to the code they test, in the same package:
+
+```go,ignore
+// calc.go
+package calc
+
+func Add(a, b int) int {
+	return a + b
+}
+```
+
+```go,ignore
+// calc_test.go
+package calc
+
+import "testing"
+
+func TestAdd(t *testing.T) {
+	got := Add(2, 3)
+	if got != 5 {
+		t.Errorf("Add(2, 3) = %d, want 5", got)
+	}
+}
+```
+
+The rules:
+
+- the function starts with `Test`, followed by an uppercase letter;
+- it takes a single parameter, `t *testing.T`;
+- a test **passes** if it reports no errors.
+
+```bash
+$ go test
+PASS
+ok      example/calc  0.002s
+
+$ go test -v ./...        # every package, with details
+=== RUN   TestAdd
+--- PASS: TestAdd (0.00s)
+```
+
+## `Errorf` vs. `Fatalf`
+
+- `t.Errorf` reports the error and **keeps going** (you see every problem at once).
+- `t.Fatalf` reports and **stops** the test immediately (when continuing makes no sense, for example after failing to open a file).
+
+```go,ignore
+func TestRead(t *testing.T) {
+	data, err := os.ReadFile("testdata/input.txt")
+	if err != nil {
+		t.Fatalf("can't read the file: %v", err) // without data, the rest is pointless
+	}
+	if len(data) == 0 {
+		t.Error("the file is empty")
+	}
+}
+```
+
+Files used by tests go in the `testdata/` directory, which the compiler ignores.
+
+## Table-driven tests
+
+The most common pattern in Go: a list of cases and a loop. You add a new case by writing one line:
+
+```go,ignore
+func TestIsEven(t *testing.T) {
+	cases := []struct {
+		name string
+		n    int
+		want bool
+	}{
+		{"zero", 0, true},
+		{"positive even", 4, true},
+		{"positive odd", 7, false},
+		{"negative even", -2, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) { // one sub-test per case
+			if got := IsEven(c.n); got != c.want {
+				t.Errorf("IsEven(%d) = %v, want %v", c.n, got, c.want)
+			}
+		})
+	}
+}
+```
+
+`t.Run` creates named **sub-tests**. You can run just one:
+
+```bash
+go test -run 'TestIsEven/negative' -v
+```
+
+The same idea, in a program you can run directly:
+
+```go
+package main
+
+import "fmt"
+
+func IsEven(n int) bool { return n%2 == 0 }
+
+func main() {
+	cases := []struct {
+		n    int
+		want bool
+	}{{0, true}, {4, true}, {7, false}, {-2, true}, {-3, false}}
+
+	failures := 0
+	for _, c := range cases {
+		if got := IsEven(c.n); got != c.want {
+			fmt.Printf("FAIL: IsEven(%d) = %v, want %v\n", c.n, got, c.want)
+			failures++
+		}
+	}
+	fmt.Printf("%d cases, %d failures\n", len(cases), failures)
+}
+```
+
+## Useful error messages
+
+A good message says **what** you called, **what** you got and **what** you expected: `Add(2, 3) = 6, want 5`. The Go convention: the value you got first (`got`), then the one you wanted (`want`).
+
+## Code coverage
+
+```bash
+go test -cover                        # the percentage of lines covered
+go test -coverprofile=c.out
+go tool cover -html=c.out             # a line-by-line report in the browser
+```
+
+## Useful commands
+
+| Command | What it does |
+|---|---|
+| `go test ./...` | every package |
+| `go test -v` | shows every test |
+| `go test -run TestName` | only tests matching the expression |
+| `go test -count=1` | ignores the test cache |
+| `go test -race` | detects data races |
+| `go test -short` | skips long tests (those checking `testing.Short()`) |
+
+## Summary
+
+- Tests in `*_test.go`, functions `TestXxx(t *testing.T)`.
+- `t.Errorf` continues, `t.Fatalf` stops.
+- Table-driven tests + `t.Run` are the standard pattern.
+- Messages of the form `F(x) = got, want want`.
+- Run `go test -cover` and `-race` regularly.

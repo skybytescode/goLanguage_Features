@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<meta name="description" content="{{.Description}}">
+<link rel="alternate" hreflang="{{.OtherLang}}" href="{{.SwitchURL}}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐹%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{.Base}}assets/style.css">
+<script defer src="{{.Base}}assets/app.js"></script>
+</head>
+<body data-base="{{.Base}}" data-lang="{{.Lang}}"
+      data-no-results="{{.S.NoResults}}" data-one-result="{{.S.OneResult}}"
+      data-many-results="{{.S.ManyResults}}" data-many-results-de="{{.S.ManyResultsDe}}">
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <a href="{{.HomeURL}}" class="brand">🐹 Go Features</a>
+      <a href="{{.SwitchURL}}" class="lang-toggle" hreflang="{{.OtherLang}}" title="{{.S.SwitchLabel}}" aria-label="{{.S.SwitchLabel}}">{{if eq .OtherLang "en"}}EN{{else}}RO{{end}}</a>
+    </div>
+    <input type="search" class="search" placeholder="{{.S.SearchPlaceholder}}" aria-label="{{.S.SearchLabel}}">
+    <nav>
+      {{- range .Nav}}
+      <a href="{{.URL}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Title}}</a>
+      {{- end}}
+    </nav>
+  </aside>
+  <main>
+    <section class="results" hidden>
+      <p class="results-count" aria-live="polite"></p>
+      <div class="results-list"></div>
+    </section>
+    <div class="page">
+    {{- if .Home}}
+      <section class="home">
+        <h1>{{.S.HomeTitle}}</h1>
+        <p class="lead">{{.S.HomeLead}}</p>
+        <h2>{{.S.LevelsHeading}}</h2>
+        <div class="levels">
+          {{- range .Levels}}
+          <div class="level-card lvl-{{.Num}}">
+            <span class="level-num">{{.Num}}</span>
+            <h3>{{.Name}}</h3>
+            <p>{{.Tagline}}</p>
+          </div>
+          {{- end}}
+        </div>
+        <h2>{{.S.TopicsHeading}}</h2>
+        <div class="topics">
+          {{- range .Topics}}
+          <a class="topic-card" href="{{.URL}}">{{.Title}}</a>
+          {{- end}}
+        </div>
+      </section>
+    {{- else}}
+      <div class="level-tabs">
+        {{- range .Levels}}
+        <a href="{{.URL}}" class="level-tab lvl-{{.Num}}{{if .Active}} active{{end}}" title="{{.Tagline}}"{{if .Active}} aria-current="page"{{end}}>
+          <span class="level-num">{{.Num}}</span>{{.Name}}
+        </a>
+        {{- end}}
+      </div>
+      <article class="content">
+{{.Content}}
+      </article>
+      <nav class="pager">
+        {{- with .Prev}}<a href="{{.URL}}">← {{.Title}}</a>{{else}}<span></span>{{end}}
+        {{- with .Next}}<a href="{{.URL}}">{{.Title}} →</a>{{end}}
+      </nav>
+    {{- end}}
+    </div>
+  </main>
+</div>
+</body>
+</html>

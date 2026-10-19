@@ -1,0 +1,240 @@
+# Sync and atomic — Middle
+
+The more specialized tools in `sync`: `RWMutex`, the `OnceFunc`/`OnceValue` family, `sync.Pool`, `sync.Map`, `sync.Cond`, plus the patterns that keep critical sections short and correct.
+
+## `sync.RWMutex`: many readers, one writer
+
+When reads are much more frequent than writes, `RWMutex` allows **several readers at once**; a writer gets exclusive access:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+type Cache struct {
+	mu   sync.RWMutex
+	data map[string]string
+}
+
+func (c *Cache) Get(k string) (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	v, ok := c.data[k]
+	return v, ok
+}
+
+func (c *Cache) Set(k, v string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[k] = v
+}
+
+func main() {
+	c := &Cache{data: map[string]string{}}
+	c.Set("lang", "go")
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() { c.Get("lang") }) // reading in parallel
+	}
+	wg.Wait()
+	fmt.Println(c.Get("lang"))
+}
+```
+
+`RWMutex` costs more than `Mutex`. It's only worth it if reads clearly dominate and critical sections aren't tiny; otherwise a plain `Mutex` is as fast or faster. Measure.
+
+## `OnceFunc`, `OnceValue`, `OnceValues` (Go 1.21)
+
+More convenient versions of `sync.Once` that return functions:
+
+```go
+package main
+
+import (
+	"fmt"
+	"os"
+	"sync"
+)
+
+var loadConfig = sync.OnceValues(func() (string, error) {
+	fmt.Println("reading only once")
+	b, err := os.ReadFile("/etc/hostname")
+	return string(b), err
+})
+
+func main() {
+	for range 3 {
+		_, err := loadConfig() // the same result on every call
+		fmt.Println("error:", err != nil)
+	}
+}
+```
+
+Unlike `Once.Do`, if the function panics, every later call panics with the **same** value, instead of silently returning an uninitialized value.
+
+## Atomic types and `CompareAndSwap`
+
+`CompareAndSwap(old, new)` writes `new` only if the current value is still `old`. It's the basis of lock-free algorithms:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"sync/atomic"
+)
+
+// atomicMax updates m if v is larger, with no mutex.
+func atomicMax(m *atomic.Int64, v int64) {
+	for {
+		cur := m.Load()
+		if v <= cur || m.CompareAndSwap(cur, v) {
+			return
+		}
+		// someone else changed it in the meantime: retry
+	}
+}
+
+func main() {
+	var peak atomic.Int64
+	var wg sync.WaitGroup
+	for i := range 100 {
+		wg.Go(func() { atomicMax(&peak, int64(i)) })
+	}
+	wg.Wait()
+	fmt.Println(peak.Load()) // 99
+}
+```
+
+`atomic.Pointer[T]` allows atomically replacing an entire struct: readers always see either the old version or the new one, never a mixed state. It's the "copy-on-write" pattern for hot-reloaded configuration:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync/atomic"
+)
+
+type Config struct {
+	Port  int
+	Debug bool
+}
+
+var config atomic.Pointer[Config]
+
+func main() {
+	config.Store(&Config{Port: 8080})
+	c := config.Load() // readers: no lock
+
+	next := *c // copy, modify, publish
+	next.Debug = true
+	config.Store(&next)
+
+	fmt.Println(c.Debug, config.Load().Debug) // false true
+}
+```
+
+## `sync.Pool`: reusing temporary objects
+
+`sync.Pool` keeps objects that can be reused, reducing allocations and GC pressure. Objects in the pool can be freed by the GC at any time, so the pool is a **cache**, not storage:
+
+```go
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"sync"
+)
+
+var buffers = sync.Pool{
+	New: func() any { return new(bytes.Buffer) },
+}
+
+func format(name string) string {
+	b := buffers.Get().(*bytes.Buffer)
+	defer func() {
+		b.Reset() // clean it before handing it back
+		buffers.Put(b)
+	}()
+	b.WriteString("hello, ")
+	b.WriteString(name)
+	return b.String()
+}
+
+func main() {
+	fmt.Println(format("Ana"))
+	fmt.Println(format("Ion"))
+}
+```
+
+Watch out for buffers that grow very large: reusing them keeps the memory occupied. `fmt` and `encoding/json` drop buffers above a threshold instead of putting them back.
+
+## `sync.Map`
+
+A map that's safe for concurrent access, optimized for two cases: keys written once and read often (caches that only grow), or goroutines working on disjoint keys. The API isn't typed (`any`), and in other cases a `map` + `Mutex` is faster.
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	var m sync.Map
+	m.Store("a", 1)
+	v, loaded := m.LoadOrStore("a", 2) // already exists: returns the existing value
+	fmt.Println(v, loaded)             // 1 true
+	m.Range(func(k, v any) bool {
+		fmt.Println(k, v)
+		return true
+	})
+}
+```
+
+## `sync.Cond`
+
+A condition variable: goroutines wait (`Wait`) until another announces (`Signal`/`Broadcast`) that a condition may have changed. It's rarely needed in Go: channels and `context` cover almost every case, more clearly.
+
+## Rules for critical sections
+
+1. **Short.** Don't do I/O, network calls or long computations while holding the lock. Copy what you need, release, then work.
+2. **No callbacks under a lock.** Unknown code may try to take the same lock: deadlock (Go mutexes are **not** reentrant).
+3. **A fixed order** when taking several locks, to avoid deadlocks between goroutines.
+4. **Don't copy** structs containing a mutex (`go vet` helps).
+
+```go,panic
+package main
+
+import "sync"
+
+var mu sync.Mutex
+
+func a() {
+	mu.Lock()
+	defer mu.Unlock()
+	b() // b tries to take the same lock
+}
+
+func b() {
+	mu.Lock() // deadlock: mutexes aren't reentrant
+	defer mu.Unlock()
+}
+
+func main() { a() }
+```
+
+## Summary
+
+- `RWMutex` only when reads clearly dominate; otherwise `Mutex`.
+- `OnceValue(s)` for lazy initialization that returns values.
+- `CompareAndSwap` and `atomic.Pointer` for lock-free updates.
+- `sync.Pool` reduces temporary allocations; `sync.Map` only in its niche.
+- Short critical sections, no I/O, no reentrancy.

@@ -1,0 +1,204 @@
+# Reflection și unsafe — Middle
+
+Modificarea valorilor prin reflection (regula adresabilității), parcurgerea generică a structurilor, apelarea metodelor, `reflect.DeepEqual` și costul real al reflection-ului. Apoi, primii pași cu `unsafe.Pointer`.
+
+## Cele trei legi ale reflection-ului
+
+1. Din interfață în obiect de reflection: `reflect.ValueOf(x)`.
+2. Din obiect de reflection înapoi în interfață: `v.Interface()`.
+3. Pentru a **modifica** un `reflect.Value`, acesta trebuie să fie **settable**: să provină dintr-un pointer.
+
+```go
+package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+func main() {
+	x := 3.4
+	v := reflect.ValueOf(x)
+	fmt.Println(v.CanSet()) // false: v conține o copie a lui x
+
+	p := reflect.ValueOf(&x).Elem() // Elem: valoarea spre care indică pointerul
+	fmt.Println(p.CanSet())         // true
+	p.SetFloat(7.1)
+	fmt.Println(x) // 7.1
+}
+```
+
+`v.SetFloat` pe o valoare care nu e settable dă **panic**, nu eroare.
+
+## Exemplu: un validator bazat pe tag-uri
+
+Un caz real de reflection: o funcție care lucrează pe **orice** structură, ghidată de tag-uri:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+func Valideaza(s any) error {
+	v := reflect.ValueOf(s)
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return errors.New("aștept o structură")
+	}
+	var erori []error
+	t := v.Type()
+	for i := range t.NumField() {
+		camp, valoare := t.Field(i), v.Field(i)
+		for _, regula := range strings.Split(camp.Tag.Get("validate"), ",") {
+			switch {
+			case regula == "required" && valoare.IsZero():
+				erori = append(erori, fmt.Errorf("%s: obligatoriu", camp.Name))
+			case strings.HasPrefix(regula, "min="):
+				min, _ := strconv.Atoi(strings.TrimPrefix(regula, "min="))
+				if valoare.Kind() == reflect.Int && valoare.Int() < int64(min) {
+					erori = append(erori, fmt.Errorf("%s: minim %d", camp.Name, min))
+				}
+			}
+		}
+	}
+	return errors.Join(erori...)
+}
+
+type Cont struct {
+	Nume   string `validate:"required"`
+	Email  string `validate:"required"`
+	Varsta int    `validate:"min=18"`
+}
+
+func main() {
+	fmt.Println(Valideaza(Cont{Nume: "Ana", Varsta: 15}))
+	fmt.Println(Valideaza(&Cont{Nume: "Ion", Email: "i@x.ro", Varsta: 30})) // <nil>
+}
+```
+
+## Apelarea metodelor
+
+```go
+package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type Calculator struct{}
+
+func (Calculator) Aduna(a, b int) int      { return a + b }
+func (Calculator) Inmulteste(a, b int) int { return a * b }
+
+func main() {
+	c := reflect.ValueOf(Calculator{})
+	for _, nume := range []string{"Aduna", "Inmulteste", "Imparte"} {
+		m := c.MethodByName(nume)
+		if !m.IsValid() {
+			fmt.Println(nume, ": nu există")
+			continue
+		}
+		rez := m.Call([]reflect.Value{reflect.ValueOf(6), reflect.ValueOf(7)})
+		fmt.Println(nume, "=", rez[0].Int())
+	}
+}
+```
+
+Doar metodele **exportate** sunt vizibile prin reflection.
+
+## `reflect.DeepEqual`
+
+Compară recursiv două valori, inclusiv slices și maps, pe care `==` nu le acceptă:
+
+```go
+package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+func main() {
+	a := map[string][]int{"x": {1, 2}}
+	b := map[string][]int{"x": {1, 2}}
+	fmt.Println(reflect.DeepEqual(a, b)) // true
+
+	var nilSlice []int
+	fmt.Println(reflect.DeepEqual(nilSlice, []int{})) // false: nil și gol diferă
+}
+```
+
+În teste, `slices.Equal` și `maps.Equal` sunt mai rapide și mai clare când tipurile sunt cunoscute; `DeepEqual` rămâne pentru structuri imbricate arbitrare (sau `github.com/google/go-cmp`, cu diferențe lizibile).
+
+## Costul
+
+```go
+package main
+
+import (
+	"fmt"
+	"reflect"
+	"testing"
+)
+
+type P struct{ X, Y int }
+
+func main() {
+	p := P{1, 2}
+	direct := testing.Benchmark(func(b *testing.B) {
+		for b.Loop() {
+			_ = p.X + p.Y
+		}
+	})
+	prinReflect := testing.Benchmark(func(b *testing.B) {
+		for b.Loop() {
+			v := reflect.ValueOf(p)
+			_ = v.Field(0).Int() + v.Field(1).Int()
+		}
+	})
+	fmt.Printf("direct: %v/op, reflect: %v/op\n",
+		direct.NsPerOp(), prinReflect.NsPerOp())
+}
+```
+
+Biblioteci ca `encoding/json` reduc costul analizând un tip **o singură dată** și păstrând rezultatul (indexurile câmpurilor, funcțiile de conversie) într-un cache.
+
+## `unsafe.Pointer`: primii pași
+
+`unsafe.Pointer` e un pointer către orice; poate fi convertit în și din orice alt tip pointer. Un caz legitim și frecvent: reinterpretarea memoriei între tipuri cu **același layout**:
+
+```go
+package main
+
+import (
+	"fmt"
+	"math"
+	"unsafe"
+)
+
+func main() {
+	f := 1.5
+	biti := *(*uint64)(unsafe.Pointer(&f)) // aceeași memorie, citită ca uint64
+	fmt.Printf("%#016x\n", biti)
+	fmt.Println(biti == math.Float64bits(f)) // biblioteca standard face exact asta
+}
+```
+
+Pentru aproape orice caz de felul acesta, există deja o funcție sigură în biblioteca standard (`math.Float64bits`, `binary.LittleEndian.Uint32`, `unsafe.String`). Folosește-le pe acelea.
+
+## Pe scurt
+
+- Pentru a modifica prin reflection, pornește de la un pointer și folosește `Elem()`.
+- Reflection e ideal pentru funcții care lucrează pe orice structură, ghidate de tag-uri.
+- `MethodByName` + `Call` apelează metode dinamic; doar cele exportate.
+- `DeepEqual` compară recursiv, dar deosebește `nil` de gol.
+- `unsafe.Pointer` reinterpretează memoria; preferă funcțiile sigure din biblioteca standard.

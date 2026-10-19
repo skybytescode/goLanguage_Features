@@ -1,0 +1,116 @@
+# Runtime: scheduler, memorie, GC — Junior
+
+Fiecare program Go conține un **runtime**: cod inclus automat în binar, care programează goroutines pe procesor, alocă memoria și o eliberează prin **garbage collector** (GC). Nu trebuie să-l pornești sau să-l configurezi ca să funcționeze, dar e util să știi ce face.
+
+## Binarul conține tot
+
+```bash
+go build -o app .
+ls -lh app      # câțiva MB, chiar pentru un „hello world”
+./app           # rulează fără Go instalat și fără alte biblioteci
+```
+
+Dimensiunea vine în mare parte din runtime și din biblioteca standard. Avantajul: un singur fișier, ușor de distribuit, de pus într-un container minimal.
+
+## Nu eliberezi memoria manual
+
+În Go nu există `free` sau `delete` pentru memorie. Aloci cu `make`, `new`, `&T{}` sau literale, iar GC-ul eliberează automat ce nu mai e folosit:
+
+```go
+package main
+
+import (
+	"fmt"
+	"runtime"
+)
+
+func main() {
+	var stat runtime.MemStats
+
+	date := make([][]byte, 0, 100)
+	for range 100 {
+		date = append(date, make([]byte, 1<<20)) // 100 × 1 MiB
+	}
+	runtime.ReadMemStats(&stat)
+	fmt.Printf("în uz: ~%d MiB\n", stat.HeapAlloc>>20)
+
+	date = nil   // nu mai referim nimic
+	runtime.GC() // forțăm o colectare (doar pentru demonstrație)
+	runtime.ReadMemStats(&stat)
+	fmt.Printf("după GC: ~%d MiB\n", stat.HeapAlloc>>20)
+	fmt.Println("colectări până acum:", stat.NumGC)
+}
+```
+
+Un obiect e eliberat când **nu mai există nicio cale** de a ajunge la el din program (variabile, alte obiecte accesibile). În cod obișnuit nu apelezi niciodată `runtime.GC()`.
+
+## Stivă și heap
+
+- Variabilele locale stau, de obicei, pe **stiva** goroutine-ului: alocare și eliberare practic gratuite.
+- Valorile care trebuie să trăiască mai mult decât funcția (de exemplu un pointer întors) ajung pe **heap**, de unde le eliberează GC-ul.
+
+Compilatorul decide singur unde stă fiecare variabilă (vezi [Pointeri](../../pointeri/senior/)).
+
+## Scheduler-ul
+
+Runtime-ul împarte goroutines pe un număr mic de fire de execuție ale sistemului de operare. Câte rulează efectiv în paralel spune `GOMAXPROCS`, implicit numărul de nuclee (sau limita de CPU a containerului, din Go 1.25):
+
+```go
+package main
+
+import (
+	"fmt"
+	"runtime"
+	"sync"
+)
+
+func main() {
+	fmt.Println("GOMAXPROCS:", runtime.GOMAXPROCS(0))
+
+	var wg sync.WaitGroup
+	for range 1000 {
+		wg.Go(func() { _ = make([]byte, 1024) })
+	}
+	fmt.Println("goroutines active acum:", runtime.NumGoroutine())
+	wg.Wait()
+	fmt.Println("după Wait:", runtime.NumGoroutine())
+}
+```
+
+Detalii despre cum funcționează în [Goroutines](../../goroutines/senior/).
+
+## Informații despre runtime
+
+```go
+package main
+
+import (
+	"fmt"
+	"runtime"
+)
+
+func main() {
+	fmt.Println("versiune Go:", runtime.Version())
+	fmt.Println("sistem:", runtime.GOOS, runtime.GOARCH)
+	fmt.Println("nuclee:", runtime.NumCPU())
+}
+```
+
+## Variabile de mediu importante
+
+| Variabilă | Ce controlează |
+|---|---|
+| `GOMAXPROCS` | câte fire rulează cod Go simultan |
+| `GOGC` | cât de des rulează GC-ul (implicit 100) |
+| `GOMEMLIMIT` | o limită „moale” de memorie pentru runtime |
+| `GODEBUG` | opțiuni de depanare și compatibilitate |
+
+Nivelul Middle explică `GOGC` și `GOMEMLIMIT`.
+
+## Pe scurt
+
+- Runtime-ul e inclus în fiecare binar: scheduler, alocator, GC.
+- Memoria se eliberează automat când nu mai e accesibilă.
+- Stiva e ieftină; heap-ul e gestionat de GC.
+- `GOMAXPROCS` = câte goroutines rulează efectiv în paralel.
+- Nu apela `runtime.GC()` în cod normal.

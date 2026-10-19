@@ -1,0 +1,202 @@
+# Erori, defer, panic și recover — Middle
+
+În codul real, o eroare trece prin mai multe straturi. Fiecare strat adaugă context, iar codul de sus trebuie să poată afla ce s-a întâmplat la bază. Pentru asta există **wrapping**, `errors.Is` și `errors.As`.
+
+## Wrapping cu `%w`
+
+`fmt.Errorf` cu verbul `%w` creează o eroare nouă care o **conține** pe cea originală:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+)
+
+func citesteConfig(cale string) ([]byte, error) {
+	date, err := os.ReadFile(cale)
+	if err != nil {
+		return nil, fmt.Errorf("citire config %q: %w", cale, err)
+	}
+	return date, nil
+}
+
+func main() {
+	_, err := citesteConfig("/nu/exista.yaml")
+	fmt.Println(err)
+	fmt.Println(errors.Is(err, fs.ErrNotExist)) // true: găsită în lanț
+}
+```
+
+Cu `%v` în loc de `%w` mesajul ar fi identic, dar legătura cu eroarea originală s-ar pierde.
+
+## Erori santinelă și `errors.Is`
+
+O **eroare santinelă** e o variabilă exportată, cu care se compară: `io.EOF`, `fs.ErrNotExist`, `sql.ErrNoRows`. `errors.Is` caută în tot lanțul de wrapping, deci folosește-l în locul lui `==`:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrNegasit = errors.New("negăsit")
+
+func gaseste(id int) error {
+	if id != 1 {
+		return fmt.Errorf("utilizatorul %d: %w", id, ErrNegasit)
+	}
+	return nil
+}
+
+func main() {
+	err := gaseste(7)
+	fmt.Println(err == ErrNegasit)          // false: e învelită
+	fmt.Println(errors.Is(err, ErrNegasit)) // true
+}
+```
+
+## Tipuri de eroare și `errors.As` / `errors.AsType`
+
+Când apelantul are nevoie de **date** din eroare (un cod, un câmp), definești un tip. `errors.As` găsește în lanț prima eroare de acel tip. Din Go 1.26, varianta generică `errors.AsType` e mai scurtă și mai sigură:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type EroareValidare struct {
+	Camp  string
+	Motiv string
+}
+
+func (e *EroareValidare) Error() string { return e.Camp + ": " + e.Motiv }
+
+func valideaza(varsta int) error {
+	if varsta < 0 {
+		return fmt.Errorf("înregistrare: %w", &EroareValidare{"varsta", "negativă"})
+	}
+	return nil
+}
+
+func main() {
+	err := valideaza(-3)
+
+	var ev *EroareValidare
+	if errors.As(err, &ev) {
+		fmt.Println("câmp invalid:", ev.Camp)
+	}
+
+	if ev, ok := errors.AsType[*EroareValidare](err); ok { // Go 1.26
+		fmt.Println("motiv:", ev.Motiv)
+	}
+}
+```
+
+## Mai multe erori: `errors.Join`
+
+Când validezi mai multe lucruri, poți întoarce toate erorile odată. `errors.Is` și `errors.As` caută în fiecare:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+var (
+	ErrNume  = errors.New("nume lipsă")
+	ErrEmail = errors.New("email invalid")
+)
+
+func valideaza(nume, email string) error {
+	var errs []error
+	if nume == "" {
+		errs = append(errs, ErrNume)
+	}
+	if email == "" {
+		errs = append(errs, ErrEmail)
+	}
+	return errors.Join(errs...) // nil dacă lista e goală
+}
+
+func main() {
+	err := valideaza("", "")
+	fmt.Println(err)
+	fmt.Println(errors.Is(err, ErrEmail)) // true
+}
+```
+
+## Ce să alegi
+
+| Situație | Soluție |
+|---|---|
+| apelantul nu reacționează diferit după cauză | `fmt.Errorf("context: %w", err)` |
+| apelantul verifică un caz anume | eroare santinelă + `errors.Is` |
+| apelantul are nevoie de detalii | tip de eroare + `errors.As` / `errors.AsType` |
+| nu vrei ca apelanții să depindă de eroarea internă | `%v` în loc de `%w` (fără wrapping) |
+
+Wrapping-ul face eroarea internă parte din **API-ul** tău: apelanții vor începe să depindă de ea.
+
+## Context, nu repetiție
+
+Fiecare strat adaugă **ce făcea el**, nu „eroare la…” sau „failed to…”. Rezultatul se citește ca un lanț:
+
+```text
+pornire server: încărcare config: citire config "app.yaml": open app.yaml: no such file or directory
+```
+
+Și tratează o eroare **o singură dată**: fie o loghezi, fie o întorci. Nu amândouă, altfel apare de mai multe ori în log.
+
+## `defer` care modifică rezultatul
+
+Un `defer` poate citi și modifica rezultatele **cu nume**. E util pentru a adăuga context tuturor erorilor dintr-o funcție sau pentru erorile de la `Close`:
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type resursa struct{}
+
+func (resursa) Close() error { return errors.New("flush eșuat") }
+
+func proceseaza() (err error) {
+	r := resursa{}
+	defer func() {
+		if cerr := r.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("închidere: %w", cerr) // nu pierdem eroarea de la Close
+		}
+	}()
+	return nil
+}
+
+func main() {
+	fmt.Println(proceseaza())
+}
+```
+
+La fișierele deschise pentru **scriere**, eroarea de la `Close` contează: datele pot să nu fi fost scrise.
+
+## `panic` în biblioteci
+
+O bibliotecă nu ar trebui să dea panic pentru erori de input; întoarce `error`. Excepția acceptată: funcțiile `MustX` (`regexp.MustCompile`, `template.Must`), folosite la inițializare cu valori constante, unde o eroare e oricum un bug.
+
+## Pe scurt
+
+- `%w` învelește; `errors.Is` și `errors.As` caută în tot lanțul.
+- Santinele pentru cazuri, tipuri pentru detalii, `errors.Join` pentru liste.
+- Fiecare strat adaugă context scurt; tratează eroarea o singură dată.
+- Rezultatele cu nume + `defer` prind erorile de la `Close`.

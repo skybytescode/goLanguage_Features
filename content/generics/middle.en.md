@@ -1,0 +1,174 @@
+# Generics — Middle
+
+Your own constraints, the `~` operator, constraints with methods and, above all, the practical question: when are generics worth it, and when is an interface better.
+
+## Custom constraints: unions and `~`
+
+A constraint is an interface. Besides methods, it can contain a **union** of types. `~T` means "any type whose underlying type is `T`", including user-defined types:
+
+```go
+package main
+
+import "fmt"
+
+type Number interface {
+	~int | ~int64 | ~float64
+}
+
+func Sum[T Number](s []T) T {
+	var total T
+	for _, v := range s {
+		total += v
+	}
+	return total
+}
+
+type Euro float64 // a defined type, with underlying type float64
+
+func main() {
+	fmt.Println(Sum([]int{1, 2, 3}))
+	fmt.Println(Sum([]Euro{9.99, 0.01})) // works thanks to ~float64
+}
+```
+
+Without `~`, `Euro` wouldn't satisfy the constraint: `Euro` and `float64` are different types. The `golang.org/x/exp/constraints` package has ready-made constraints (`Integer`, `Float`, `Signed`).
+
+## Constraints with methods
+
+A constraint can require methods, like an ordinary interface. Combining "types + methods" is possible but rare:
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func Join[T fmt.Stringer](items []T, sep string) string {
+	parts := make([]string, len(items))
+	for i, it := range items {
+		parts[i] = it.String()
+	}
+	return strings.Join(parts, sep)
+}
+
+type Color int
+
+func (c Color) String() string { return [...]string{"red", "green", "blue"}[c] }
+
+func main() {
+	fmt.Println(Join([]Color{0, 2, 1}, ", "))
+}
+```
+
+Why not just `[]fmt.Stringer`? Because a `[]Color` is **not** a `[]fmt.Stringer`; it would have to be converted element by element. The generic version takes `[]Color` directly.
+
+## Generics or an interface?
+
+| Use generics when… | Use an interface when… |
+|---|---|
+| you write data structures (lists, queues, sets, caches) | you need different behavior per type (polymorphism) |
+| the same logic works on slices/maps of any type | implementations have different code, only a shared signature |
+| you want to avoid `any` conversions and type assertions | the caller puts different types in the same collection |
+| you use operators (`<`, `+`) on different types | the method is all that matters |
+
+Ian Lance Taylor's rule: if you find yourself writing the exact same code several times, differing only in types, consider generics. If you only **call methods**, an interface is usually enough.
+
+## Generic types with constraints
+
+```go
+package main
+
+import (
+	"fmt"
+	"maps"
+	"slices"
+)
+
+type Set[T comparable] struct {
+	m map[T]struct{}
+}
+
+func NewSet[T comparable](items ...T) *Set[T] {
+	s := &Set[T]{m: make(map[T]struct{}, len(items))}
+	for _, it := range items {
+		s.Add(it)
+	}
+	return s
+}
+
+func (s *Set[T]) Add(v T)      { s.m[v] = struct{}{} }
+func (s *Set[T]) Has(v T) bool { _, ok := s.m[v]; return ok }
+func (s *Set[T]) Len() int     { return len(s.m) }
+
+func Intersection[T comparable](a, b *Set[T]) *Set[T] {
+	res := NewSet[T]()
+	for v := range a.m {
+		if b.Has(v) {
+			res.Add(v)
+		}
+	}
+	return res
+}
+
+func main() {
+	a := NewSet(1, 2, 3, 4)
+	b := NewSet(3, 4, 5)
+	i := Intersection(a, b)
+	fmt.Println(slices.Sorted(maps.Keys(i.m))) // [3 4]
+}
+```
+
+## Methods can't have their own type parameters
+
+A method can use its type's parameters but **can't** declare new ones. Operations that change the type (for example `Map` from `T` to `U`) are written as functions:
+
+```go,compile_fail
+package main
+
+type List[T any] struct{ items []T }
+
+func (l List[T]) Map[U any](f func(T) U) List[U] { // error: methods cannot have type parameters
+	return List[U]{}
+}
+
+func main() {}
+```
+
+## Partial inference
+
+You can give only the first type parameters explicitly, and the rest are inferred:
+
+```go
+package main
+
+import "fmt"
+
+func Convert[To, From ~int | ~float64](s []From) []To {
+	res := make([]To, len(s))
+	for i, v := range s {
+		res[i] = To(v)
+	}
+	return res
+}
+
+func main() {
+	f := Convert[float64]([]int{1, 2, 3}) // From = int, inferred
+	fmt.Println(f)
+}
+```
+
+That's why, when designing a function, you put **first** the type parameters that can't be inferred from the arguments.
+
+## The zero value and comparing to it
+
+`var zero T` works for any `T`. Comparing `v == zero`, however, requires `comparable`. For a `T any`, the workaround is `reflect.ValueOf(&v).Elem().IsZero()`, but it's usually a sign you need the `comparable` constraint.
+
+## Summary
+
+- `~T` includes types defined over `T`; unions list the allowed types.
+- Constraints can require methods, like interfaces.
+- Generics for data structures and algorithms; interfaces for behavior.
+- Methods can't have their own type parameters: use functions.
+- Put first the type parameters that can't be inferred.

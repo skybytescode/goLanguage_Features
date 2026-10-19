@@ -1,0 +1,223 @@
+# Range și iteratori — Middle
+
+Iteratorii devin cu adevărat utili când îi **compui**: filtrare, transformare, limitare, fără slices intermediare. Tot aici: iteratorii pentru structuri proprii, iteratorii „pull” și regulile pe care un iterator corect trebuie să le respecte.
+
+## Adaptori: `Filter`, `Map`, `Take`
+
+Un adaptor primește un iterator și întoarce altul. Valorile trec prin lanț una câte una, deci nimic nu e calculat inutil:
+
+```go
+package main
+
+import (
+	"fmt"
+	"iter"
+	"slices"
+)
+
+func Filter[V any](seq iter.Seq[V], ok func(V) bool) iter.Seq[V] {
+	return func(yield func(V) bool) {
+		for v := range seq {
+			if ok(v) && !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+func Map[V, W any](seq iter.Seq[V], f func(V) W) iter.Seq[W] {
+	return func(yield func(W) bool) {
+		for v := range seq {
+			if !yield(f(v)) {
+				return
+			}
+		}
+	}
+}
+
+func Take[V any](seq iter.Seq[V], n int) iter.Seq[V] {
+	return func(yield func(V) bool) {
+		if n <= 0 {
+			return
+		}
+		i := 0
+		for v := range seq {
+			if !yield(v) {
+				return
+			}
+			i++
+			if i == n {
+				return
+			}
+		}
+	}
+}
+
+// Naturale e un iterator infinit: 1, 2, 3, ...
+func Naturale(yield func(int) bool) {
+	for i := 1; ; i++ {
+		if !yield(i) {
+			return
+		}
+	}
+}
+
+func main() {
+	patratePare := Take(Map(Filter(Naturale, func(n int) bool { return n%2 == 0 }),
+		func(n int) int { return n * n }), 4)
+	fmt.Println(slices.Collect(patratePare)) // [4 16 36 64]
+}
+```
+
+`Naturale` e infinit, dar `Take` oprește lanțul după 4 valori: `yield` întoarce `false`, iar fiecare nivel se oprește pe rând.
+
+## Iteratori pentru structuri proprii
+
+Convenția: o metodă `All()` (sau `Values()`, `Keys()`) care întoarce un `iter.Seq`/`iter.Seq2`. Un arbore binar parcurs în ordine:
+
+```go
+package main
+
+import (
+	"fmt"
+	"iter"
+)
+
+type Arbore struct {
+	Stanga, Dreapta *Arbore
+	Val             int
+}
+
+func (a *Arbore) Insereaza(v int) *Arbore {
+	if a == nil {
+		return &Arbore{Val: v}
+	}
+	if v < a.Val {
+		a.Stanga = a.Stanga.Insereaza(v)
+	} else {
+		a.Dreapta = a.Dreapta.Insereaza(v)
+	}
+	return a
+}
+
+func (a *Arbore) All() iter.Seq[int] {
+	return func(yield func(int) bool) {
+		a.parcurge(yield)
+	}
+}
+
+// parcurge întoarce false dacă bucla s-a oprit, ca recursia să se oprească imediat.
+func (a *Arbore) parcurge(yield func(int) bool) bool {
+	if a == nil {
+		return true
+	}
+	return a.Stanga.parcurge(yield) && yield(a.Val) && a.Dreapta.parcurge(yield)
+}
+
+func main() {
+	var a *Arbore
+	for _, v := range []int{5, 3, 8, 1, 4, 9} {
+		a = a.Insereaza(v)
+	}
+	for v := range a.All() {
+		if v > 5 {
+			break
+		}
+		fmt.Print(v, " ") // 1 3 4 5
+	}
+	fmt.Println()
+}
+```
+
+Înainte de Go 1.23, același lucru cerea un callback (`Walk(func(int))`), fără posibilitatea de `break`, sau un channel și o goroutine, mult mai lent.
+
+## Regulile unui iterator corect
+
+1. **Verifică rezultatul lui `yield`.** Dacă întoarce `false`, întoarce-te imediat. Un apel `yield` după `false` dă panic la rulare.
+2. **Nu păstra `yield`** după ce iteratorul s-a întors și nu-l apela din altă goroutine.
+3. **Eliberează resursele cu `defer`** în iterator: rulează și la `break`, și la terminarea normală.
+
+```go
+package main
+
+import (
+	"fmt"
+	"iter"
+)
+
+func Linii(nume string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		fmt.Println("deschid", nume)
+		defer fmt.Println("închid", nume) // rulează și la break
+		for _, l := range []string{"a", "b", "c"} {
+			if !yield(l) {
+				return
+			}
+		}
+	}
+}
+
+func main() {
+	for l := range Linii("date.txt") {
+		fmt.Println(l)
+		if l == "b" {
+			break
+		}
+	}
+}
+```
+
+## Iteratori din biblioteca standard
+
+| Funcție | Ce produce |
+|---|---|
+| `slices.All(s)`, `slices.Values(s)`, `slices.Backward(s)` | index/valoare, valori, invers |
+| `slices.Chunk(s, n)` | sub-slices de câte `n` |
+| `maps.All(m)`, `maps.Keys(m)`, `maps.Values(m)` | perechi, chei, valori |
+| `strings.Lines`, `SplitSeq`, `FieldsSeq` | bucăți de text |
+| `slices.Collect`, `slices.Sorted`, `maps.Collect` | consumă un iterator |
+| `slices.AppendSeq`, `maps.Insert` | adaugă dintr-un iterator |
+
+## Iteratori „pull”: `iter.Pull`
+
+Iteratorii de mai sus sunt „push”: ei apelează corpul buclei. Uneori ai nevoie să ceri valorile **tu**, câte una — de exemplu ca să parcurgi doi iteratori în paralel. `iter.Pull` transformă un iterator push într-o pereche `next`/`stop`:
+
+```go
+package main
+
+import (
+	"fmt"
+	"iter"
+	"slices"
+)
+
+func Zip[A, B any](a iter.Seq[A], b iter.Seq[B]) iter.Seq2[A, B] {
+	return func(yield func(A, B) bool) {
+		nextB, stop := iter.Pull(b)
+		defer stop() // obligatoriu: eliberează iteratorul b
+		for va := range a {
+			vb, ok := nextB()
+			if !ok || !yield(va, vb) {
+				return
+			}
+		}
+	}
+}
+
+func main() {
+	nume := slices.Values([]string{"Ana", "Ion", "Eva"})
+	note := slices.Values([]int{9, 7})
+	for n, nota := range Zip(nume, note) {
+		fmt.Println(n, nota) // Ana 9, Ion 7
+	}
+}
+```
+
+Uită `stop()` și iteratorul rămâne suspendat, cu resursele lui.
+
+## Pe scurt
+
+- Adaptorii (`Filter`, `Map`, `Take`) compun iteratori fără slices intermediare.
+- Expune `All()` care întoarce `iter.Seq` pentru colecțiile tale.
+- Verifică mereu rezultatul lui `yield`; `defer` pentru curățare.
+- `iter.Pull` când trebuie să ceri valorile tu; apelează întotdeauna `stop`.

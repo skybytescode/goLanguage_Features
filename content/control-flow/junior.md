@@ -1,0 +1,185 @@
+# Control flow — Junior
+
+Go are puține instrucțiuni de control, dar fiecare e flexibilă: `if`, `for` (singura buclă din limbaj) și `switch`.
+
+## `if`
+
+Condiția nu are paranteze, dar acoladele sunt obligatorii:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	varsta := 20
+	if varsta >= 18 {
+		fmt.Println("major")
+	} else if varsta >= 14 {
+		fmt.Println("adolescent")
+	} else {
+		fmt.Println("copil")
+	}
+}
+```
+
+Condiția trebuie să fie de tip `bool`: `if 1 { }` nu compilează, spre deosebire de C sau JavaScript.
+
+## `if` cu instrucțiune de inițializare
+
+Înainte de condiție poți pune o instrucțiune scurtă. Variabila declarată acolo există doar în `if` și în ramurile lui `else`:
+
+```go
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func main() {
+	if n, err := strconv.Atoi("123"); err != nil {
+		fmt.Println("nu e număr:", err)
+	} else {
+		fmt.Println("numărul este", n)
+	}
+	// n și err nu mai există aici
+}
+```
+
+Forma aceasta e foarte des folosită pentru tratarea erorilor.
+
+## `for`: singura buclă
+
+Go nu are `while` sau `do-while`. `for` le acoperă pe toate:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	// forma clasică
+	for i := 0; i < 3; i++ {
+		fmt.Println("i =", i)
+	}
+
+	// ca un „while”
+	n := 1
+	for n < 100 {
+		n *= 2
+	}
+	fmt.Println("n =", n)
+
+	// buclă infinită, oprită cu break
+	k := 0
+	for {
+		k++
+		if k == 5 {
+			break
+		}
+	}
+	fmt.Println("k =", k)
+}
+```
+
+## `for` cu `range`
+
+`range` parcurge elementele unei colecții. Primești indexul (sau cheia) și valoarea:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	fructe := []string{"măr", "pară", "prună"}
+	for i, f := range fructe {
+		fmt.Println(i, f)
+	}
+
+	// doar valoarea: ignori indexul cu _
+	for _, f := range fructe {
+		fmt.Println(f)
+	}
+
+	// de la Go 1.22: range peste un număr
+	for i := range 3 {
+		fmt.Println("pas", i) // 0, 1, 2
+	}
+}
+```
+
+## `continue` și `break`
+
+`continue` sare la următoarea iterație, `break` iese din buclă:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	for i := range 10 {
+		if i%2 == 0 {
+			continue // sărim peste numerele pare
+		}
+		if i > 7 {
+			break
+		}
+		fmt.Println(i) // 1 3 5 7
+	}
+}
+```
+
+## `switch`
+
+`switch` e mai curat decât un lanț de `if-else`. Spre deosebire de C, **nu trece automat** în ramura următoare: nu ai nevoie de `break`.
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	zi := "sâmbătă"
+	switch zi {
+	case "sâmbătă", "duminică": // mai multe valori într-un case
+		fmt.Println("weekend")
+	case "luni":
+		fmt.Println("început de săptămână")
+	default:
+		fmt.Println("zi lucrătoare")
+	}
+}
+```
+
+## `switch` fără expresie
+
+Fără expresie, fiecare `case` e o condiție. E echivalentul unui `if-else if` lung:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	nota := 8
+	switch {
+	case nota >= 9:
+		fmt.Println("excelent")
+	case nota >= 7:
+		fmt.Println("bine")
+	case nota >= 5:
+		fmt.Println("suficient")
+	default:
+		fmt.Println("insuficient")
+	}
+}
+```
+
+## Pe scurt
+
+- `if` nu are paranteze, dar are mereu acolade; poate avea o instrucțiune de inițializare.
+- `for` e singura buclă: clasică, „while”, infinită sau cu `range`.
+- `switch` nu are nevoie de `break` și poate avea mai multe valori pe un `case`.
