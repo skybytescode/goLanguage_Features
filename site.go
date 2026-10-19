@@ -141,6 +141,9 @@ func (s *Site) Build(out string) error {
 	if err := os.RemoveAll(out); err != nil {
 		return err
 	}
+	if err := s.writePWA(out); err != nil {
+		return err
+	}
 	for _, lang := range Langs {
 		dir := filepath.Join(out, lang.Prefix())
 		if err := writePage(filepath.Join(dir, "index.html"), s.homePage(lang)); err != nil {
@@ -182,7 +185,10 @@ func (s *Site) Build(out string) error {
 		return err
 	}
 	// GitHub Pages: fără procesare Jekyll
-	return writeFile(filepath.Join(out, ".nojekyll"), nil)
+	if err := writeFile(filepath.Join(out, ".nojekyll"), nil); err != nil {
+		return err
+	}
+	return s.writeServiceWorker(out) // ultimul: versiunea depinde de toate celelalte fișiere
 }
 
 func writePage(path string, d pageData) error {

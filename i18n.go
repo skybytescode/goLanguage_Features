@@ -19,6 +19,12 @@ type Strings struct {
 	OneResult         string
 	ManyResults       string // %d e numărul de rezultate
 	ManyResultsDe     string // română: „20 de rezultate”
+	OfflineHeading    string
+	OfflineLead       string
+	OfflineButton     string
+	OfflineProgress   string // %d din %d
+	OfflineDone       string
+	OfflineFailed     string // %d pagini nesalvate
 }
 
 var ro = Strings{
@@ -38,6 +44,12 @@ var ro = Strings{
 	OneResult:         "1 rezultat",
 	ManyResults:       "%d rezultate",
 	ManyResultsDe:     "%d de rezultate",
+	OfflineHeading:    "Aplicație și offline",
+	OfflineLead:       "Pe iPhone: Safari → Share → „Add to Home Screen”. Pe Android și desktop: meniul browserului → „Instalează aplicația”. Paginile vizitate rămân disponibile fără internet; poți salva și toate lecțiile odată.",
+	OfflineButton:     "Salvează toate lecțiile pentru offline",
+	OfflineProgress:   "Se salvează… %d din %d",
+	OfflineDone:       "Gata: toate lecțiile sunt disponibile offline.",
+	OfflineFailed:     "Salvare incompletă: %d pagini nu au putut fi descărcate. Încearcă din nou.",
 }
 
 var en = Strings{
@@ -57,6 +69,12 @@ var en = Strings{
 	OneResult:         "1 result",
 	ManyResults:       "%d results",
 	ManyResultsDe:     "%d results",
+	OfflineHeading:    "App and offline",
+	OfflineLead:       "On iPhone: Safari → Share → “Add to Home Screen”. On Android and desktop: the browser menu → “Install app”. Visited pages stay available without internet; you can also save every lesson at once.",
+	OfflineButton:     "Save all lessons for offline",
+	OfflineProgress:   "Saving… %d of %d",
+	OfflineDone:       "Done: every lesson is available offline.",
+	OfflineFailed:     "Incomplete: %d pages couldn't be downloaded. Try again.",
 }
 
 func strs(lang Lang) *Strings {

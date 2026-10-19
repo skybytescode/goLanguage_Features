@@ -2,17 +2,26 @@
 <html lang="{{.Lang}}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{{.Title}}</title>
 <meta name="description" content="{{.Description}}">
 <link rel="alternate" hreflang="{{.OtherLang}}" href="{{.SwitchURL}}">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐹%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="{{.Base}}icons/icon-32.png">
+<link rel="manifest" href="{{.Base}}{{if eq .Lang "en"}}en/{{end}}manifest.webmanifest">
+<link rel="apple-touch-icon" href="{{.Base}}icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Go Features">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1f24" media="(prefers-color-scheme: dark)">
 <link rel="stylesheet" href="{{.Base}}assets/style.css">
 <script defer src="{{.Base}}assets/app.js"></script>
 </head>
 <body data-base="{{.Base}}" data-lang="{{.Lang}}"
       data-no-results="{{.S.NoResults}}" data-one-result="{{.S.OneResult}}"
-      data-many-results="{{.S.ManyResults}}" data-many-results-de="{{.S.ManyResultsDe}}">
+      data-many-results="{{.S.ManyResults}}" data-many-results-de="{{.S.ManyResultsDe}}"
+      data-offline-progress="{{.S.OfflineProgress}}" data-offline-done="{{.S.OfflineDone}}" data-offline-failed="{{.S.OfflineFailed}}">
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-top">
@@ -51,6 +60,12 @@
           {{- range .Topics}}
           <a class="topic-card" href="{{.URL}}">{{.Title}}</a>
           {{- end}}
+        </div>
+        <h2>{{.S.OfflineHeading}}</h2>
+        <div class="offline-card">
+          <p>{{.S.OfflineLead}}</p>
+          <button type="button" class="offline-btn" hidden>{{.S.OfflineButton}}</button>
+          <p class="offline-status" aria-live="polite"></p>
         </div>
       </section>
     {{- else}}

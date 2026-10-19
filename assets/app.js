@@ -203,4 +203,32 @@
   });
   // la revenirea cu „Back”, browserul poate păstra textul din câmp
   if (input.value) render();
+
+  // --- aplicație instalabilă și offline ----------------------------------------
+
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register(`${body.dataset.base}sw.js`).catch(() => {
+    /* fără service worker, site-ul funcționează normal, doar online */
+  });
+
+  const btn = document.querySelector(".offline-btn");
+  const status = document.querySelector(".offline-status");
+  if (!btn) return;
+  btn.hidden = false;
+  btn.addEventListener("click", async () => {
+    const reg = await navigator.serviceWorker.ready;
+    if (!reg.active) return;
+    btn.disabled = true;
+    reg.active.postMessage({ type: "download", lang: body.dataset.lang });
+  });
+  navigator.serviceWorker.addEventListener("message", (ev) => {
+    const d = body.dataset;
+    const msg = ev.data || {};
+    if (msg.type === "progress") {
+      status.textContent = d.offlineProgress.replace("%d", msg.done).replace("%d", msg.total);
+    } else if (msg.type === "downloaded") {
+      status.textContent = msg.failed ? d.offlineFailed.replace("%d", msg.failed) : d.offlineDone;
+      btn.disabled = false;
+    }
+  });
 })();
