@@ -4,7 +4,7 @@ package main
 //
 // Fiecare subiect are câte un fișier Markdown pentru fiecare nivel și limbă:
 // content/<slug>/<nivel>.md (română) și content/<slug>/<nivel>.en.md
-// (engleză), unde <nivel> e junior, middle sau senior. Fișierele sunt
+// (engleză), unde <nivel> e numărul nivelului, de la 1 la 4. Fișierele sunt
 // incluse în binar cu go:embed; un fișier lipsă oprește generarea site-ului.
 
 import (
@@ -57,21 +57,30 @@ func (l Level) Tagline(lang Lang) string { return l.tagline[lang] }
 
 var Levels = []Level{
 	{
-		Slug:    "junior",
-		name:    [2]string{"Junior", "Junior"},
+		Slug:    "1",
+		name:    [2]string{"Fundamente", "Fundamentals"},
 		tagline: [2]string{"Ce este și cum îl folosesc", "What it is and how to use it"},
 	},
 	{
-		Slug:    "middle",
-		name:    [2]string{"Middle", "Middle"},
-		tagline: [2]string{"Cum îl folosesc corect: idiomuri, pattern-uri, capcane", "How to use it well: idioms, patterns, pitfalls"},
+		Slug:    "2",
+		name:    [2]string{"Practician", "Practitioner"},
+		tagline: [2]string{"Cum îl folosesc corect", "How to use it well"},
 	},
 	{
-		Slug:    "senior",
-		name:    [2]string{"Senior", "Senior"},
-		tagline: [2]string{"Cum funcționează pe dinăuntru și de ce", "How it works under the hood, and why"},
+		Slug:    "3",
+		name:    [2]string{"Avansat", "Advanced"},
+		tagline: [2]string{"De ce funcționează așa", "Why it works this way"},
+	},
+	{
+		Slug:    "4",
+		name:    [2]string{"Expert", "Expert"},
+		tagline: [2]string{"Cum funcționează pe dinăuntru", "How it works under the hood"},
 	},
 }
+
+// oldLevels sunt nivelurile din prima versiune a site-ului; vechile adrese
+// /<subiect>/<nivel>/ redirecționează spre nivelul nou corespunzător.
+var oldLevels = map[string]int{"junior": 0, "middle": 1, "senior": 2}
 
 type Topic struct {
 	Slug  string
@@ -80,7 +89,7 @@ type Topic struct {
 
 func (t Topic) Title(lang Lang) string { return t.title[lang] }
 
-// Page întoarce Markdown-ul paginii pentru nivelul dat (de la 0 la 2).
+// Page întoarce Markdown-ul paginii pentru nivelul dat (de la 0 la 3).
 func (t Topic) Page(lang Lang, level int) (string, error) {
 	suffix := ".md"
 	if lang == En {

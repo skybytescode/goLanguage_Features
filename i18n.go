@@ -23,7 +23,7 @@ type Strings struct {
 
 var ro = Strings{
 	HomeTitle:         "Go, de la primul program până în runtime",
-	HomeLead:          "Fiecare subiect are 3 niveluri: Junior, Middle și Senior. Toate acoperă aceleași funcționalități ale limbajului; diferă doar cât de adânc intrăm în ele.",
+	HomeLead:          "Fiecare subiect are 4 niveluri. Toate nivelurile acoperă aceleași funcționalități ale limbajului; diferă doar cât de adânc intrăm în ele.",
 	LevelsHeading:     "Niveluri",
 	TopicsHeading:     "Subiecte",
 	SearchPlaceholder: "Caută…  ( / )",
@@ -42,7 +42,7 @@ var ro = Strings{
 
 var en = Strings{
 	HomeTitle:         "Go, from your first program to the runtime",
-	HomeLead:          "Every topic has 3 levels: Junior, Middle and Senior. All levels cover the same language features; they differ only in how deep we go.",
+	HomeLead:          "Every topic has 4 levels. All levels cover the same language features; they differ only in how deep we go.",
 	LevelsHeading:     "Levels",
 	TopicsHeading:     "Topics",
 	SearchPlaceholder: "Search…  ( / )",

@@ -16,7 +16,7 @@ import (
 
 type searchEntry struct {
 	Topic    string   `json:"t"`
-	Level    int      `json:"l"` // de la 1 la 3
+	Level    int      `json:"l"` // de la 1 la 4
 	Name     string   `json:"n"` // numele nivelului
 	URL      string   `json:"u"`
 	Headings []string `json:"h"`

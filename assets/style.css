@@ -16,6 +16,8 @@
   --lvl-2-soft: #fdf1e1;
   --lvl-3: #7c3aed;
   --lvl-3-soft: #f0e9fe;
+  --lvl-4: #be123c;
+  --lvl-4-soft: #fde8ec;
   --tok-kw: #a626a4;
   --tok-ty: #b45309;
   --tok-str: #3f7d20;
@@ -42,6 +44,8 @@
     --lvl-2-soft: #3a2c10;
     --lvl-3: #c4a1ff;
     --lvl-3-soft: #2c2142;
+    --lvl-4: #fb7185;
+    --lvl-4-soft: #3d1a22;
     --tok-kw: #d19bf0;
     --tok-ty: #f5b971;
     --tok-str: #a5d68a;
@@ -166,6 +170,7 @@ main {
 .lvl-1 .level-num { background: var(--lvl-1-soft); color: var(--lvl-1); }
 .lvl-2 .level-num { background: var(--lvl-2-soft); color: var(--lvl-2); }
 .lvl-3 .level-num { background: var(--lvl-3-soft); color: var(--lvl-3); }
+.lvl-4 .level-num { background: var(--lvl-4-soft); color: var(--lvl-4); }
 
 .level-tabs {
   display: flex;
@@ -191,6 +196,7 @@ main {
 .level-tab.lvl-1.active { border-bottom-color: var(--lvl-1); }
 .level-tab.lvl-2.active { border-bottom-color: var(--lvl-2); }
 .level-tab.lvl-3.active { border-bottom-color: var(--lvl-3); }
+.level-tab.lvl-4.active { border-bottom-color: var(--lvl-4); }
 
 .content h1 { font-size: 1.9rem; line-height: 1.25; margin-top: 0; }
 .content h2 { margin-top: 2em; }

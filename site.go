@@ -156,11 +156,14 @@ func (s *Site) Build(out string) error {
 					return err
 				}
 			}
-			// /<subiect>/ trimite la primul nivel
-			redirect := fmt.Sprintf(`<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=%s"><link rel="canonical" href="%[1]s">`,
-				s.pageURL(lang, ti, 0))
-			if err := writeFile(filepath.Join(dir, t.Slug, "index.html"), []byte(redirect)); err != nil {
+			// /<subiect>/ trimite la primul nivel, iar adresele vechi la nivelul nou
+			if err := writeRedirect(filepath.Join(dir, t.Slug, "index.html"), s.pageURL(lang, ti, 0)); err != nil {
 				return err
+			}
+			for old, li := range oldLevels {
+				if err := writeRedirect(filepath.Join(dir, t.Slug, old, "index.html"), s.pageURL(lang, ti, li)); err != nil {
+					return err
+				}
 			}
 		}
 		index, err := s.searchIndex(lang)
@@ -188,6 +191,11 @@ func writePage(path string, d pageData) error {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return writeFile(path, []byte(b.String()))
+}
+
+func writeRedirect(path, url string) error {
+	page := fmt.Sprintf(`<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=%s"><link rel="canonical" href="%[1]s">`, url)
+	return writeFile(path, []byte(page))
 }
 
 func writeFile(path string, b []byte) error {

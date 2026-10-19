@@ -1,14 +1,15 @@
 # Go Language Features
 
-Site web despre funcționalitățile limbajului Go, organizat pe 3 niveluri de adâncime:
+Site web despre funcționalitățile limbajului Go, organizat pe 4 niveluri de adâncime:
 
-| Nivel | Întrebarea la care răspunde |
-|---|---|
-| Junior | Ce este și cum îl folosesc |
-| Middle | Cum îl folosesc corect: idiomuri, pattern-uri, capcane |
-| Senior | Cum funcționează pe dinăuntru și de ce |
+| Nivel | Nume | Întrebarea la care răspunde |
+|---|---|---|
+| 1 | Fundamente | Ce este și cum îl folosesc |
+| 2 | Practician | Cum îl folosesc corect |
+| 3 | Avansat | De ce funcționează așa |
+| 4 | Expert | Cum funcționează pe dinăuntru |
 
-Fiecare dintre cele 25 de subiecte acoperă toate cele 3 niveluri. Site-ul e disponibil în română și în engleză (butonul **EN / RO** din bara laterală).
+Fiecare dintre cele 25 de subiecte acoperă toate cele 4 niveluri. Site-ul e disponibil în română și în engleză (butonul **EN / RO** din bara laterală).
 
 ## Tech stack
 
@@ -25,9 +26,9 @@ go test ./...                  # compilează și rulează fiecare exemplu din co
 
 ## Conținut
 
-Textele sunt în `content/<subiect>/<nivel>.md` (română) și `content/<subiect>/<nivel>.en.md` (engleză), cu `<nivel>` = `junior`, `middle` sau `senior`. Lista subiectelor și titlurile lor sunt în `content.go`, iar textele interfeței în `i18n.go`.
+Textele sunt în `content/<subiect>/<nivel>.md` (română) și `content/<subiect>/<nivel>.en.md` (engleză), cu `<nivel>` = `1`, `2`, `3` sau `4`. Lista subiectelor și titlurile lor sunt în `content.go`, iar textele interfeței în `i18n.go`.
 
-URL-urile în română au forma `/<subiect>/<nivel>/`, iar cele în engleză `/en/<subiect>/<nivel>/`.
+URL-urile în română au forma `/<subiect>/<nivel>/`, iar cele în engleză `/en/<subiect>/<nivel>/`. Adresele din prima versiune (`junior`, `middle`, `senior`) redirecționează spre nivelurile 1, 2 și 3.
 
 Blocurile de cod ` ```go ` sunt programe complete. Testele (`examples_test.go`) verifică pentru fiecare că e formatat cu gofmt, că se compilează și că rulează fără eroare. Variante:
 
