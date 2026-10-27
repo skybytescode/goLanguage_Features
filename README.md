@@ -9,7 +9,7 @@ Site web despre funcționalitățile limbajului Go, organizat pe 4 niveluri de a
 | 3 | Avansat | De ce funcționează așa |
 | 4 | Expert | Cum funcționează pe dinăuntru |
 
-Fiecare dintre cele 25 de subiecte acoperă toate cele 4 niveluri. Site-ul e disponibil în română și în engleză (butonul **EN / RO** din bara laterală).
+Fiecare dintre cele 26 de subiecte acoperă toate cele 4 niveluri. Site-ul e disponibil în română și în engleză (butonul **EN / RO** din bara laterală).
 
 ## Tech stack
 

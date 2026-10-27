@@ -129,4 +129,5 @@ var Topics = []Topic{
 	topic("reflect-unsafe", "Reflection și unsafe", "Reflection and unsafe"),
 	topic("runtime", "Runtime: scheduler, memorie, GC", "Runtime: scheduler, memory, GC"),
 	topic("tooling", "Tooling și profiling", "Tooling and profiling"),
+	topic("linting", "Linting și golangci-lint", "Linting and golangci-lint"),
 }
