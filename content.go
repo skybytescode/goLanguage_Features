@@ -130,4 +130,5 @@ var Topics = []Topic{
 	topic("runtime", "Runtime: scheduler, memorie, GC", "Runtime: scheduler, memory, GC"),
 	topic("tooling", "Tooling și profiling", "Tooling and profiling"),
 	topic("linting", "Linting și golangci-lint", "Linting and golangci-lint"),
+	topic("tipare-dsa", "Tipare DSA (algoritmi)", "DSA patterns (algorithms)"),
 }

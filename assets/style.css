@@ -244,6 +244,42 @@ main {
 .content th, .content td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
 .content img { max-width: 100%; }
 
+/* Diagrame SVG scrise direct în Markdown (<figure class="diagram">).
+   Culorile vin din variabilele temei, ca diagramele să arate bine și în modul întunecat. */
+.diagram {
+  margin: 1.4em 0;
+  padding: 14px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+.diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.diagram figcaption { margin-top: 8px; color: var(--muted); font-size: 0.88em; text-align: center; }
+.diagram text { fill: var(--text); font-size: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.diagram text.s { fill: var(--muted); font-size: 11px; }
+.diagram text.b { font-weight: 700; }
+.diagram text.acc { fill: var(--accent); }
+.diagram text.ok { fill: var(--lvl-1); }
+.diagram text.warn { fill: var(--lvl-2); }
+.diagram text.bad { fill: var(--fail); }
+.diagram .cell { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+.diagram .dim { fill: var(--code-bg); stroke: var(--border); stroke-width: 1.5; }
+.diagram .hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.diagram .hl2 { fill: var(--lvl-2-soft); stroke: var(--lvl-2); stroke-width: 2; }
+.diagram .hl3 { fill: var(--lvl-3-soft); stroke: var(--lvl-3); stroke-width: 2; }
+.diagram .good { fill: var(--lvl-1-soft); stroke: var(--lvl-1); stroke-width: 2; }
+.diagram .no { fill: var(--fail-soft); stroke: var(--fail); stroke-width: 2; }
+.diagram .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.diagram .ln-acc { stroke: var(--accent); stroke-width: 2; fill: none; }
+.diagram .ln-2 { stroke: var(--lvl-2); stroke-width: 2; fill: none; }
+.diagram .ln-bad { stroke: var(--fail); stroke-width: 2; fill: none; stroke-dasharray: 5 4; }
+.diagram .dash { stroke-dasharray: 5 4; }
+.diagram .f-acc { fill: var(--accent); }
+.diagram .f-2 { fill: var(--lvl-2); }
+.diagram .f-mut { fill: var(--muted); }
+.diagram .f-bad { fill: var(--fail); }
+
 .code {
   border: 1px solid var(--border);
   border-radius: 8px;
